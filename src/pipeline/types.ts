@@ -12,6 +12,8 @@ export interface VideoMeta {
   description?: string;
   /** B 站官方 AI 总结 */
   summary?: string;
+  /** 视频 aid（评论接口的 oid）。从 view 接口拿到后带上，省一次请求。 */
+  aid?: number;
 }
 
 /** 视频上下文，词表与精判都要用。 */

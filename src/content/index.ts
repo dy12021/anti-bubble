@@ -1,6 +1,6 @@
 import { createPageBridge } from './page-bridge';
 import { BiliClient } from '../bili/client';
-import { fetchNav, fetchVideo, fetchVideoIdByBvid, fetchConclusion, fetchComments } from '../bili/api';
+import { fetchVideo, fetchConclusion, fetchComments } from '../bili/api';
 import { collectColdStart } from '../profile/collect';
 import { recallOpposite } from '../recommend/recall';
 import { CommentPanel } from './comment-panel';
@@ -33,6 +33,18 @@ const getJson = createPageBridge({
   postMessage: (m) => window.postMessage(m, window.location.origin),
 });
 
+/**
+ * **全页面共享一个 BiliClient**。
+ *
+ * BiliClient 内部有节流（B 站风控阈值：连续 5-8 次/分钟就拦），
+ * 但节流状态是**实例级**的。如果各处各自 new 一个，
+ * 它们的请求就互相不避让，等于没有限流——冷启动采集和视频上下文
+ * 并发时就会撞 -352，然后重试退避，表现为「视频页评论区面板一直不出现」。
+ *
+ * 所以这里建一个模块级单例，全页面共用。
+ */
+const bili = new BiliClient({ getJson });
+
 /** 向 service worker 发消息。 */
 function send(msg: unknown): Promise<unknown> {
   return new Promise((resolve) => {
@@ -55,22 +67,23 @@ function send(msg: unknown): Promise<unknown> {
  */
 async function loadVideoContext(bvid: string): Promise<VideoContext | null> {
   try {
-    const bili = new BiliClient({ getJson });
+    // 一次 view 接口同时拿标题/简介和 aid/cid/upMid —— 少打一次，省一次限流等待
     const video = await fetchVideo(bili, bvid);
     if (!video) return null;
 
     let summary: string | undefined;
-    try {
-      const ids = await fetchVideoIdByBvid(bili, bvid);
-      if (ids) {
-        const conclusion = await fetchConclusion(bili, bvid, ids.cid, ids.upMid);
+    const cid = (video as { cid?: number }).cid;
+    const upMid = (video as { owner?: { mid?: number } }).owner?.mid;
+    if (typeof cid === 'number' && typeof upMid === 'number') {
+      try {
+        const conclusion = await fetchConclusion(bili, bvid, cid, upMid);
         const text = conclusion?.model_result;
         if (typeof text === 'string' && text.length > 0) {
           summary = text.slice(0, 2000);
         }
+      } catch {
+        // AI 总结拿不到不影响主流程
       }
-    } catch {
-      // AI 总结拿不到不影响主流程
     }
 
     return {
@@ -78,6 +91,7 @@ async function loadVideoContext(bvid: string): Promise<VideoContext | null> {
       title: video.title ?? '',
       description: video.description ? video.description.slice(0, 2000) : undefined,
       summary,
+      aid: typeof video.aid === 'number' ? video.aid : undefined,
     };
   } catch {
     return null;
@@ -110,7 +124,6 @@ async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
   if (profile && (profile.sampleCount ?? 0) > 0) return;
 
   try {
-    const bili = new BiliClient({ getJson });
     const samples = await collectColdStart(bili, { includeHistory: settings.collectHistory });
     if (samples.length === 0) return;
     await send({
@@ -150,7 +163,6 @@ async function fetchOppositeRecommendations(
 
   // ② 在页面上下文搜 B 站
   try {
-    const bili = new BiliClient({ getJson });
     const candidates = await recallOpposite(bili, keywords);
     if (candidates.length === 0) return [];
 
@@ -179,10 +191,9 @@ async function mountCommentPanel(
   ctrl: PageController,
 ): Promise<void> {
   if (!settings || !settings.enabledPages['video']) return;
-
-  const bili = new BiliClient({ getJson });
-  const ids = await fetchVideoIdByBvid(bili, video.bvid);
-  if (!ids) return;
+  // aid 已经在 loadVideoContext 里从 view 接口拿到了，不必再打一次
+  const aid = video.aid;
+  if (typeof aid !== 'number') return;
 
   const anchor =
     document.getElementById('commentapp') ??
@@ -193,7 +204,7 @@ async function mountCommentPanel(
 
   const panel = new CommentPanel({
     root: document,
-    aid: ids.aid,
+    aid,
     fetchComments: (oid, mode, parent) => fetchComments(bili, oid, mode, parent),
     send,
     settings,
@@ -252,7 +263,6 @@ async function main(): Promise<void> {
   }
 
   // 调试用：验证登录态与页面桥
-  const bili = new BiliClient({ getJson });
   void bili.isLoggedIn().then((loggedIn) => {
     if (loggedIn) {
       console.info('[anti-bubble] 已登录 B 站，冷启动画像可用');
