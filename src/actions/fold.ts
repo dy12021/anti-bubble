@@ -41,6 +41,46 @@ export function injectStyles(root: ParentNode): void {
 .${CSS_PREFIX}-recommend-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .${CSS_PREFIX}-recommend-item { display: flex; gap: 6px; margin: 6px 0; font-size: 13px; }
 .${CSS_PREFIX}-recommend-reason { color: #61666d; font-size: 12px; }
+
+/* --- 自有评论区 --- */
+.${CSS_PREFIX}-comments {
+  margin: 16px 0; padding: 12px 0 0;
+  border-top: 1px solid #e3e5e7;
+}
+.${CSS_PREFIX}-comments-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px;
+}
+.${CSS_PREFIX}-comments-title { font-size: 15px; font-weight: 600; color: #1f2329; }
+.${CSS_PREFIX}-comments-count { font-size: 12px; color: #9499a0; }
+.${CSS_PREFIX}-comments-toggle {
+  margin-left: auto; cursor: pointer;
+  border: 1px solid #e3e5e7; border-radius: 5px;
+  background: #fff; color: #61666d;
+  font-size: 11px; padding: 2px 8px;
+}
+.${CSS_PREFIX}-comments-toggle:hover { border-color: #c9ccd0; }
+.${CSS_PREFIX}-comments-list { display: flex; flex-direction: column; }
+.${CSS_PREFIX}-comment { padding: 8px 0; border-bottom: 1px dashed #e3e5e7; }
+.${CSS_PREFIX}-comment-meta {
+  display: flex; align-items: baseline; gap: 10px;
+  font-size: 12px; color: #9499a0;
+}
+.${CSS_PREFIX}-comment-author { color: #61666d; font-weight: 500; }
+.${CSS_PREFIX}-comment-text {
+  margin-top: 2px; font-size: 14px; line-height: 1.6; color: #1f2329;
+  word-break: break-word;
+}
+.${CSS_PREFIX}-comments-status { padding: 10px 0; font-size: 12px; color: #9499a0; }
+.${CSS_PREFIX}-comments-status.status-err { color: #d63b3b; }
+.${CSS_PREFIX}-comments-more {
+  display: block; width: 100%; margin-top: 12px;
+  padding: 8px; cursor: pointer;
+  border: 1px solid #e3e5e7; border-radius: 6px;
+  background: #fff; color: #61666d; font-size: 13px;
+}
+.${CSS_PREFIX}-comments-more:hover:not(:disabled) { border-color: #c9ccd0; }
+.${CSS_PREFIX}-comments-more:disabled { color: #c9ccd0; cursor: default; }
 `;
   const host = doc.head ?? doc.documentElement;
   host?.appendChild(style);

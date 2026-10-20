@@ -1,8 +1,9 @@
 import { createPageBridge } from './page-bridge';
 import { BiliClient } from '../bili/client';
-import { fetchNav, fetchVideo, fetchVideoIdByBvid, fetchConclusion } from '../bili/api';
+import { fetchNav, fetchVideo, fetchVideoIdByBvid, fetchConclusion, fetchComments } from '../bili/api';
 import { collectColdStart } from '../profile/collect';
 import { recallOpposite } from '../recommend/recall';
+import { CommentPanel } from './comment-panel';
 import type { RecommendItem } from '../actions/recommend';
 import { PageController } from './controller';
 import { MSG } from '../shared/messages';
@@ -165,6 +166,46 @@ async function fetchOppositeRecommendations(
   }
 }
 
+/**
+ * 视频页挂载自有评论区。
+ *
+ * B 站原生评论在 closed shadow root 里，DOM 够不着；
+ * 所以自己用 API 取、自己渲染，折叠/标识/撤销都在自己的 DOM 里做。
+ */
+async function mountCommentPanel(
+  video: VideoContext,
+  settings: Settings | null,
+  send: (msg: unknown) => Promise<unknown>,
+  ctrl: PageController,
+): Promise<void> {
+  if (!settings || !settings.enabledPages['video']) return;
+
+  const bili = new BiliClient({ getJson });
+  const ids = await fetchVideoIdByBvid(bili, video.bvid);
+  if (!ids) return;
+
+  const anchor =
+    document.getElementById('commentapp') ??
+    document.querySelector('.bili-video-info-container') ??
+    document.querySelector('#viewbox_report') ??
+    document.body?.firstElementChild;
+  if (!anchor) return;
+
+  const panel = new CommentPanel({
+    root: document,
+    aid: ids.aid,
+    fetchComments: (oid, mode, parent) => fetchComments(bili, oid, mode, parent),
+    send,
+    settings,
+    videoTitle: video.title,
+    onRevoke: (id) => {
+      void send({ type: MSG.REVOKE, id: 'revoke', payload: { itemId: id } });
+    },
+  });
+  panel.mount(anchor);
+  void ctrl;
+}
+
 async function main(): Promise<void> {
   const resp = (await send({
     type: MSG.GET_SETTINGS, id: 'init',
@@ -191,6 +232,12 @@ async function main(): Promise<void> {
 
   await ctrl.start();
 
+  // 视频页：原生评论区在 closed shadow root 里读不到，
+  // 改用 API 取评论 + 自渲染面板（见 comment-panel.ts 的说明）。
+  if (video) {
+    void mountCommentPanel(video, settings, send, ctrl);
+  }
+
   // 反向推荐：插在视频标题后面
   if (video) {
     void fetchOppositeRecommendations(video, settings).then((items) => {
@@ -205,11 +252,15 @@ async function main(): Promise<void> {
 
   // 调试用：验证登录态与页面桥
   const bili = new BiliClient({ getJson });
-  void fetchNav(bili).then((nav) => {
-    if (nav) {
-      console.info('[anti-bubble] nav ok, login=', nav.isLogin, 'uname=', nav.uname);
+  void bili.isLoggedIn().then((loggedIn) => {
+    if (loggedIn) {
+      console.info('[anti-bubble] 已登录 B 站，冷启动画像可用');
     } else {
-      console.warn('[anti-bubble] nav 获取失败（可能未登录或被风控）');
+      // 未登录时插件仍能工作（搜索/评论是公开的），
+      // 但冷启动画像（观看历史/收藏夹/关注）拿不到数据——要说清楚，别让用户干瞪眼。
+      console.warn(
+        '[anti-bubble] 未登录 B 站：搜索与评论过滤仍可用，但冷启动画像（观看历史/收藏夹）取不到数据。登录后刷新即可。',
+      );
     }
   });
 }

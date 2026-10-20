@@ -33,3 +33,15 @@ export const ANTI_TRIGGER_WATCH_SECONDS = 60;
 
 /** B 站风控阈值：连续请求间隔（毫秒）。5-8 次/分钟即会被拦。 */
 export const BILI_REQUEST_INTERVAL_MS = 1200;
+
+/**
+ * LLM 单次请求的默认输出 token 上限。
+ *
+ * 为什么给这么大：推理模型（thinking）会先思考再回答，
+ * **思考过程和最终答案共用这个预算**。给小了，思考把预算烧光，
+ * 最终 content 就是空串 -> JSON 解析失败 -> 判定链路静默失效。
+ *
+ * 实测 MiniMax-M3.1-Flash-Preview：max_tokens=2000 时 content 时而为空、
+ * 时而正常（adaptive thinking 长度会波动），8000 才稳定。
+ */
+export const DEFAULT_MAX_TOKENS = 8192;

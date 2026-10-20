@@ -76,7 +76,13 @@ export interface UserProfile {
   sampleCount: number;
 }
 
-/** LLM 配置。用户自带 Key。 */
+/**
+ * LLM 配置。用户自带 Key。
+ *
+ * 三个可选项是给「推理模型」准备的：这类模型会先思考再回答，
+ * 思考过程和最终答案**共用 token 预算**。预算给小了，最终答案就是空的，
+ * 判定链路会静默失效（看起来像「插件没反应」）。
+ */
 export interface LlmConfig {
   provider: 'openai' | 'anthropic';
   baseUrl: string;
@@ -84,6 +90,23 @@ export interface LlmConfig {
   model: string;
   /** 单次请求超时（毫秒） */
   timeoutMs: number;
+  /**
+   * 单次请求的最大输出 token。留空则用 DEFAULT_MAX_TOKENS。
+   * 推理模型需要留足思考空间——实测 MiniMax-M3.1 用 2000 会把预算全烧在
+   * reasoning_content 上，最终 content 为空串。
+   */
+  maxTokens?: number;
+  /**
+   * 推理强度。**不是所有模型都支持**：
+   * MiniMax-M3.1-Flash-Preview 强制 adaptive thinking，传 none 会被 400 拒绝。
+   * 只有确定服务商支持时才填。
+   */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
+  /**
+   * 用 `max_completion_tokens` 而不是 `max_tokens`。
+   * 部分 OpenAI 兼容服务商会忽略 max_tokens，要求用前者。
+   */
+  useMaxCompletionTokens?: boolean;
 }
 
 /** 全局设置。 */

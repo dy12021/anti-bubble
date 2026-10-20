@@ -51,7 +51,7 @@ export class WordlistService {
     let wordlist: Wordlist;
     try {
       const { system, user } = buildWordlistPrompt(video, profile, mode);
-      const raw = await this.client.complete(user, { system, maxTokens: 1500 });
+      const raw = await this.client.complete(user, { system });
       wordlist = parseWordlist(raw, { ...fallback, cacheKey: key });
     } catch {
       // LLM 不可用 → 兜底词表（空模式 = 全部放行），不抛

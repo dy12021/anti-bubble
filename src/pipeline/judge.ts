@@ -115,10 +115,16 @@ export function parseJudgments(
         : '未说明原因';
 
     const rc = rec['reasonCode'];
+    // action=pass 时 reasonCode 必须是 none。
+    // 实测模型会在放行时也填一个「看起来像理由」的码（比如给一条支持性评论
+    // 填 stance_opposite），那会污染屏蔽统计里的按码分布——放行的条目
+    // 本来就不该出现在任何原因分类里。
     const reasonCode: VerdictReasonCode =
-      typeof rc === 'string' && VALID_REASON_CODES.has(rc)
-        ? (rc as VerdictReasonCode)
-        : action === 'pass' ? 'none' : 'off_topic';
+      action === 'pass'
+        ? 'none'
+        : typeof rc === 'string' && VALID_REASON_CODES.has(rc)
+          ? (rc as VerdictReasonCode)
+          : 'off_topic';
 
     const conf = typeof rec['confidence'] === 'number' ? rec['confidence'] : 0.5;
 
@@ -170,7 +176,7 @@ export async function judgeItems(
     const ids = chunk.map((_, i) => String(start + i + 1));
     try {
       const { system, user } = buildJudgePrompt(chunk, wordlist, mode, profile);
-      const raw = await client.complete(user, { system, maxTokens: 2000 });
+      const raw = await client.complete(user, { system });
       const verdicts = parseJudgments(raw, ids, 'pass');
       out.push(
         ...verdicts.map((v) =>

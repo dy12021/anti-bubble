@@ -51,7 +51,7 @@ export async function judgeOpposition(
   const { system, user } = buildOppositionPrompt(current, candidates);
 
   try {
-    const raw = await client.complete(user, { system, maxTokens: 1000 });
+    const raw = await client.complete(user, { system });
     const parsed = parseJsonResponse<{ results?: { bvid?: string; reason?: string }[] }>(raw);
     const list = parsed?.results ?? [];
     const out: RecommendItem[] = [];

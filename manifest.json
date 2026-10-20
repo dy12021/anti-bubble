@@ -16,6 +16,13 @@
     "service_worker": "src/bg/index.ts",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://*.bilibili.com/*"],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_popup": "src/popup/index.html"
   },

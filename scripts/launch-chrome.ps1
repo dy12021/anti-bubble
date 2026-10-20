@@ -34,8 +34,11 @@ New-Item -ItemType Directory -Force -Path $ProfileDir | Out-Null
 $chromeArgs = @(
   "--user-data-dir=$ProfileDir",
   "--remote-debugging-port=9333",
-  "--load-extension=$dist",
-  "--disable-extensions-except=$dist",
+  # Chrome 142+ removed the DisableLoadExtensionCommandLineSwitch feature entirely,
+  # so --load-extension no longer works in stable builds.
+  # The supported way to load an unpacked extension for automation is the CDP
+  # Extensions.loadUnpacked command, which requires --enable-unsafe-extension-debugging.
+  "--enable-unsafe-extension-debugging",
   "--no-first-run",
   "--no-default-browser-check",
   "--disable-features=Translate,OptimizationGuideModelDownloading",

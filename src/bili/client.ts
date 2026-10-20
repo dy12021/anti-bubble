@@ -94,15 +94,34 @@ export class BiliClient {
     if (this.mixinKeyCache && this.mixinKeyCache.expiresAt > now) {
       return this.mixinKeyCache.key;
     }
-    const nav = await this.get<{ wbi_img?: { img_url?: string; sub_url?: string } }>(
-      '/x/web-interface/nav',
-    );
+    // **不能走 get()**：未登录时 nav 返回 code=-101（账号未登录），
+    // 但响应里照样带着 wbi_img——而 WBI 密钥正是从那儿取的。
+    // 用 get() 会因为 code !== 0 丢掉整个 data，导致取不到密钥，
+    // 于是所有需要签名的接口全部失效（搜索、评论、历史…）。
+    const env = await this.request(this.buildUrl('/x/web-interface/nav', {}));
+    const nav = (env?.data ?? null) as {
+      wbi_img?: { img_url?: string; sub_url?: string };
+    } | null;
     if (!nav?.wbi_img?.img_url || !nav.wbi_img.sub_url) return null;
     const mk = mixinKey(extractKey(nav.wbi_img.img_url), extractKey(nav.wbi_img.sub_url));
     if (!mk) return null;
     // B 站密钥 24 小时轮换。留 1 小时余量，避免边界失效。
     this.mixinKeyCache = { key: mk, expiresAt: now + 23 * 60 * 60 * 1000 };
     return mk;
+  }
+
+  /**
+   * 当前是否已登录 B 站。
+   *
+   * 为什么要单独查：未登录时 nav 返回 code=-101，
+   * 插件虽然仍能工作（搜索/评论是公开的），但**冷启动画像**（观看历史、
+   * 收藏夹、关注）拿不到数据。UI 应当据此提示用户去登录，
+   * 而不是让用户对着「插件没反应」发呆。
+   */
+  async isLoggedIn(): Promise<boolean> {
+    const env = await this.request(this.buildUrl('/x/web-interface/nav', {}));
+    const d = env?.data as { isLogin?: boolean } | null | undefined;
+    return d?.isLogin === true;
   }
 
   private buildUrl(path: string, params: Record<string, string | number>): string {

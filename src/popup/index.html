@@ -6,7 +6,115 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
-    <main id="app">（反）信息茧房</main>
+    <header class="head">
+      <h1>（反）信息茧房</h1>
+      <p class="sub">用 LLM 读懂你的偏好，主动收紧或打破信息茧房</p>
+    </header>
+
+    <!-- 模式 -->
+    <section class="block">
+      <div class="seg" role="radiogroup" aria-label="工作模式">
+        <button type="button" class="seg-btn" data-mode="cocoon" role="radio">
+          <span class="seg-title">信息茧房</span>
+          <span class="seg-desc">屏蔽你不爱看的</span>
+        </button>
+        <button type="button" class="seg-btn" data-mode="anti" role="radio">
+          <span class="seg-title">反信息茧房</span>
+          <span class="seg-desc">推给你相反观点</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 总体开关 -->
+    <section class="block">
+      <label class="switch-row">
+        <input type="checkbox" id="masterEnabled" />
+        <span class="switch-label">启用插件</span>
+      </label>
+      <label class="switch-row">
+        <input type="checkbox" id="collectHistory" />
+        <span class="switch-label">
+          拉取观看历史做冷启动画像
+          <span class="hint">读取你的观看历史、收藏夹、关注列表，只存在本机</span>
+        </span>
+      </label>
+    </section>
+
+    <!-- 干预范围 -->
+    <section class="block">
+      <h2>干预范围</h2>
+      <label class="switch-row"><input type="checkbox" data-page="search" /><span class="switch-label">搜索页</span></label>
+      <label class="switch-row"><input type="checkbox" data-page="video" /><span class="switch-label">视频页评论区</span></label>
+      <label class="switch-row"><input type="checkbox" data-page="feed" /><span class="switch-label">首页推荐流</span></label>
+    </section>
+
+    <!-- LLM 配置 -->
+    <section class="block">
+      <h2>LLM 配置</h2>
+      <p class="hint block-hint">
+        你的 Key 只保存在本机浏览器，不上传任何服务器。请求由浏览器直连你填的服务商。
+      </p>
+
+      <label class="field">
+        <span class="field-label">服务商协议</span>
+        <select id="provider">
+          <option value="openai">OpenAI 兼容（DeepSeek / MiniMax / Kimi / Qwen…）</option>
+          <option value="anthropic">Anthropic（Claude）</option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Base URL</span>
+        <input type="text" id="baseUrl" placeholder="https://api.minimax.cn/v1" spellcheck="false" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">模型名</span>
+        <input type="text" id="model" placeholder="MiniMax-M3.1-Flash-Preview" spellcheck="false" />
+      </label>
+
+      <label class="field">
+        <span class="field-label">API Key</span>
+        <input type="password" id="apiKey" placeholder="粘贴你的 Key" spellcheck="false" />
+        <span class="hint" id="keyState"></span>
+      </label>
+
+      <label class="field">
+        <span class="field-label">
+          最大输出 token
+          <span class="hint inline">推理模型需要给思考留空间，8192 是稳妥值</span>
+        </span>
+        <input type="number" id="maxTokens" min="256" step="256" value="8192" />
+      </label>
+
+      <div class="row">
+        <button type="button" class="btn btn-primary" id="saveLlm">保存配置</button>
+        <button type="button" class="btn" id="testLlm">测试连通性</button>
+      </div>
+      <p class="status" id="llmStatus"></p>
+    </section>
+
+    <!-- 画像 -->
+    <section class="block">
+      <h2>个人画像</h2>
+      <div id="profileBox" class="profile-box">读取中…</div>
+      <div class="row">
+        <button type="button" class="btn" id="refreshProfile">重新归纳画像</button>
+        <button type="button" class="btn btn-ghost" id="clearProfile">清空画像</button>
+      </div>
+      <p class="status" id="profileStatus"></p>
+    </section>
+
+    <!-- 屏蔽记录 -->
+    <section class="block">
+      <h2>最近屏蔽 <span class="count" id="blockedCount"></span></h2>
+      <div id="blockedBox" class="blocked-box">读取中…</div>
+    </section>
+
+    <footer class="foot">
+      所有数据只存在本机 · <a href="#" id="clearAll">清除全部数据</a>
+    </footer>
+
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

@@ -149,6 +149,49 @@ describe('BiliClient.getSigned', () => {
       c.getSigned('/x/web-interface/wbi/search/type', { keyword: 'x' }),
     ).resolves.toBeNull();
   });
+
+  /**
+   * 回归防护：未登录时 nav 返回 code=-101（账号未登录），
+   * 但响应里**照样带 wbi_img**。取密钥如果走 get()（code !== 0 就返回 null），
+   * 会把整个 data 丢掉 → 取不到密钥 → 所有需要签名的接口全废
+   * （搜索、评论、观看历史…），插件在未登录状态下完全不工作。
+   * 这个 bug 是真机验证时发现的：单测全绿，但扩展在浏览器里什么都不做。
+   */
+  it('未登录时（code=-101）仍能取到 WBI 密钥并发出签名请求', async () => {
+    const getJson = vi.fn(async (url: string) => {
+      if (url.includes('/x/web-interface/nav')) {
+        return { code: -101, message: '账号未登录', data: NAV_OK.data };
+      }
+      return { code: 0, message: '0', data: { result: [] } };
+    });
+    const sleep = vi.fn(async (_ms: number) => {});
+    const c = new BiliClient({ getJson, now: advancingClock(), sleep });
+
+    const data = await c.getSigned<{ result?: unknown[] }>(
+      '/x/web-interface/wbi/search/type', { keyword: 'test' },
+    );
+    expect(data).not.toBeNull();
+    expect(data).toEqual({ result: [] });
+    expect(getJson.mock.calls[1]![0]).toContain('w_rid=');
+  });
+});
+
+describe('BiliClient.isLoggedIn', () => {
+  it('已登录时返回 true', async () => {
+    const getJson = vi.fn(async () => ({
+      code: 0, message: '0', data: { isLogin: true, wbi_img: NAV_OK.data.wbi_img },
+    }));
+    const c = new BiliClient({ getJson, now: advancingClock(), sleep: async () => {} });
+    expect(await c.isLoggedIn()).toBe(true);
+  });
+
+  it('未登录时返回 false', async () => {
+    const getJson = vi.fn(async () => ({
+      code: -101, message: '账号未登录', data: { isLogin: false, wbi_img: NAV_OK.data.wbi_img },
+    }));
+    const c = new BiliClient({ getJson, now: advancingClock(), sleep: async () => {} });
+    expect(await c.isLoggedIn()).toBe(false);
+  });
 });
 
 describe('BiliClient.getPaged', () => {

@@ -99,7 +99,17 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
       case MSG.SET_LLM_CONFIG: {
         const cfg = (req.payload as { config?: LlmConfig })?.config;
         if (!cfg) return { id, ok: false, error: '缺少 LLM 配置' };
-        await saveLlmConfig(cfg);
+        // Key 不回显给 popup（安全），所以用户改别的字段时 Key 框是空的。
+        // 空 Key 表示「沿用已存的」，而不是「把 Key 清空」。
+        let apiKey = cfg.apiKey;
+        if (!apiKey) {
+          const prev = await getLlmConfig();
+          apiKey = prev?.apiKey ?? '';
+        }
+        if (!apiKey) {
+          return { id, ok: false, error: '请填写 API Key（留空表示沿用已保存的 Key）' };
+        }
+        await saveLlmConfig({ ...cfg, apiKey });
         return { id, ok: true, data: { saved: true } };
       }
 
@@ -108,7 +118,9 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         const cfg = override ?? (await getLlmConfig());
         if (!cfg) return { id, ok: false, error: '尚未配置 LLM' };
         const client = createLlmClient(cfg);
-        const out = await client.complete('回复「ok」两个字即可。', { maxTokens: 16 });
+        // 预算不能给太小：推理模型会先思考，思考和答案共用预算，
+        // 给小了会拿到空 content，然后报一个用户看不懂的「格式异常」。
+        const out = await client.complete('回复「ok」两个字即可。');
         return { id, ok: true, data: { output: out } };
       }
 
@@ -169,6 +181,10 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
 
       case MSG.GET_BLOCKED_LOG:
         return { id, ok: true, data: await getJson<BlockedEntry[]>(STORAGE_KEYS.blockedLog, []) };
+
+      case MSG.CLEAR_BLOCKED_LOG:
+        await setJson(STORAGE_KEYS.blockedLog, []);
+        return { id, ok: true, data: { cleared: true } };
 
       case MSG.RECORD_WATCH: {
         const p = req.payload as { item?: ContentItem; watchSeconds?: number } | undefined;
