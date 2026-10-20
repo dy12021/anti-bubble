@@ -52,15 +52,29 @@ Edge 与 Chrome 同源（都是 Chromium），**扩展包完全相同**，两边
 
 填完点「测试连通性」。
 
+### 推理强度：调低能快一个数量级
+
+面板里有一项「推理强度」，**默认是「低」**。
+
+判据抽取、立场分类都是简单任务，深度思考纯属浪费时间和钱。实测同一个词表请求：
+
+| 推理强度 | 耗时 |
+| --- | --- |
+| `low`（默认） | **4.8 s** |
+| 不设置（服务商默认） | 20 s ~ 70 s |
+
+如果你的服务商不认 `reasoning_effort` 这个字段（会返回 400），把它改成「不设置」即可——
+扩展也会**自动摘掉这个字段重试一次**，一般不用你手动改。
+
 ### 用推理模型？注意 token 预算
 
-带 thinking 的推理模型（如 `MiniMax-M3.1-Flash-Preview`）会**先思考再回答，
+带 thinking 的推理模型（如 `MiniMax-M3.1-Flash`）会**先思考再回答，
 思考过程和最终答案共用 token 预算**。预算给小了，最终答案就是空的，
 判定链路会静默失效（看起来像「插件没反应」）。
 
 - 扩展默认 `maxTokens = 8192`。实测 M3.1 在 2000 时会时灵时不灵，8000 才稳定。
 - 报错信息里如果出现「只返回了思考过程、没有最终答案」，就是预算不够，调大它。
-- 推理模型每次调用要 8–60 秒，**强烈建议选非推理模型**（判定是分类任务，不需要深度思考）。
+- **判断失败时，面板顶部会显示「最近一次失败」并写明原因**——不会再无声无息。
 - 扩展的判定是**异步**的：LLM 判定完成前页面照常可用，判定完成后才折叠内容。
 
 ## 权限说明
@@ -90,6 +104,22 @@ Edge 与 Chrome 同源（都是 Chromium），**扩展包完全相同**，两边
 B 站请求全部在**页面上下文**发起，浏览器自动带登录 Cookie——
 **你不需要手动导出任何凭据**。
 
+### 判定语境：视频页是「当前视频」，列表页是「这批内容」
+
+判「这条内容算不算引战」必须有语境——同一句话在不同视频下结论完全不同。
+
+- **视频页**：语境是当前这个视频（标题 / 简介 / B 站官方 AI 总结 / 评论区样本）。
+- **列表页（搜索结果、推荐流）**：页面上**没有「当前视频」**，但**这批内容本身就是语境**。
+  扩展把抽出来的标题当成一个「列表主题」（`list:<内容哈希>` 命名空间，和真实 bvid 不冲突），
+  据此生成词表、照样判定。
+
+早期版本只支持「当前视频」这一种语境，于是列表页拿不到语境 → 词表恒为空 →
+规则粗筛永不命中 → **列表页的判定从来没真正跑过**。这是本项目修掉的一类根本性缺陷。
+
+同理，词表 prompt 里明确要求判据必须是**评论/标题里会原样出现的字面表达**——
+模型爱写的「刷屏」「接龙」这种*行为描述*拿去做子串匹配永远打不中，
+粗筛会静默退化成「什么都判不了」。视频页因此会把**真实评论样本**喂给词表。
+
 ### 三个页面的实现方式不一样
 
 | 页面 | 怎么拿内容 | 为什么 |
@@ -97,6 +127,9 @@ B 站请求全部在**页面上下文**发起，浏览器自动带登录 Cookie�
 | 搜索页 | 直接读 DOM（`.bili-video-card`） | 卡片是普通 DOM |
 | 首页推荐流 | 直接读 DOM（同上） | 同上 |
 | **视频页评论区** | **调 B 站 API + 自己渲染** | 见下 |
+
+列表页的内容是**异步加载**的，而且能无限滚动——所以列表页会盯着 DOM 变化，
+新卡片进来就补判（只判没判过的那几条，判定结果在本地缓存，重复内容不花钱）。
 
 视频页之所以特殊：B 站评论的 DOM 是
 `#commentapp > <bili-comments>`（open shadow）`> <div>`（**closed shadow**），
@@ -128,26 +161,47 @@ npm run typecheck  # 类型检查
 ```bash
 npm run build
 node --experimental-strip-types scripts/verify-dist.ts   # 校验 dist 里 manifest 的每个路径都存在
-.\scripts\launch-browser.ps1 -Browser chrome -Port 9333 # 或 -Browser edge
-node --experimental-strip-types scripts/load-extension.ts
+
+# 一条命令跑完整验证：装扩展 → 注 LLM 配置 → 清缓存 → 打开页面 → 等判定 → 报告
+.\scripts\launch-browser.ps1 -Browser chrome -Port 9333 -Fresh
+$env:PAGE='search'   # search | feed | video
+node --experimental-strip-types scripts/e2e-verify.ts
 ```
+
+> **务必带 `-Fresh`。** Chrome/Edge 会把扩展的 service worker 脚本缓存到
+> `<profile>/Default/Service Worker/ScriptCache`，重新 `loadUnpacked` 之后
+> **仍然跑缓存里的旧代码**——症状是「我明明 rebuild 了，行为却还是老的」，
+> 甚至会返回旧版本的错误串。每次验证用新的 profile 目录可完全避开。
+> LLM 配置由 `e2e-verify.ts` 从 `llm-quant/config.toml` 读并注入扩展 storage
+> （Key 不进代码、不进日志）。
 
 > Chrome 142+ 把 `--load-extension` 从代码里删了（`DisableLoadExtensionCommandLineSwitch`
 > 整个特性被移除），命令行加载扩展已失效。唯一可行的自动化路径是 CDP 的
 > `Extensions.loadUnpacked`，需要 `--enable-unsafe-extension-debugging`——上面的脚本已经处理。
+
+其它探针：
+
+| 脚本 | 用途 |
+| --- | --- |
+| `probe-page-state.ts` | 只看当前页面的判定状态（卡片数/折叠数/理由） |
+| `probe-storage-summary.ts` | 读扩展 storage：词表、判定缓存、屏蔽记录、画像 |
+| `probe-spa-nav.ts` | 查 B 站点视频是整页刷新还是新标签页（结论：是新标签页） |
+| `probe-effort.ts` | 测不同推理强度下词表调用的耗时 |
 
 ## 状态
 
 早期开发阶段。已实现：
 
 - 三级判定流水线（画像匹配 → 动态词表粗筛 → LLM 精判）
-- 搜索页 / 视频页 / 推荐流三个适配器
+- 搜索页 / 视频页 / 推荐流三个适配器，列表页支持异步加载与无限滚动的增量判定
+- 判定语境抽象（视频页=当前视频，列表页=这批内容本身）
 - 折叠、标识、反向推荐卡片，含「可展开看理由 + 一键撤销」
 - 画像：观看历史/收藏夹冷启动 + 增量持续修正
-- Chrome 与 Edge 双浏览器运行
+- 完整配置面板（模式、开关、LLM 配置、推理强度、画像、屏蔽记录、失败原因）
+- Chrome 与 Edge 双浏览器真机验证通过
 
-尚未完成：配置面板 UI、商店发布（Chrome Web Store / Edge Add-ons）、
-Shadow DOM 新版评论区适配。
+尚未完成：商店发布（Chrome Web Store / Edge Add-ons）、
+「加载更多」以外的评论翻页策略、登录态下的完整冷启动画像验证。
 
 ## 发布到两个商店
 

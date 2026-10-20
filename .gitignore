@@ -7,3 +7,6 @@ dist/
 *.local
 .vscode/
 .idea/
+
+# 真机验证的运行日志（截图保留，日志不入库）
+docs/*.log

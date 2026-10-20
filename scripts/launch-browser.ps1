@@ -4,14 +4,22 @@
 # NOTE: keep this file ASCII-only. PowerShell 5.1 reads BOM-less .ps1 files as
 # ANSI (cp936), which corrupts non-ASCII comments and breaks parsing.
 #
+# IMPORTANT: always use a FRESH profile dir per verification round.
+# Chrome caches the extension's service worker script under
+# <profile>/Default/Service Worker/ScriptCache and keeps serving that CACHED
+# copy after the extension is re-loaded with new code. The symptom is
+# "I rebuilt but the extension still behaves like the old version" (it even
+# returns the old error strings). A fresh profile avoids it entirely.
+#
 # Usage:
-#   .\launch-browser.ps1 -Browser chrome
-#   .\launch-browser.ps1 -Browser edge
+#   .\launch-browser.ps1 -Browser chrome -Fresh
+#   .\launch-browser.ps1 -Browser edge -Fresh
 param(
   [ValidateSet('chrome', 'edge')]
   [string]$Browser = 'chrome',
   [int]$Port = 9333,
-  [string]$ProfileDir = ''
+  [string]$ProfileDir = '',
+  [switch]$Fresh
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,7 +43,12 @@ if (-not (Test-Path $exe)) {
 }
 
 if (-not $ProfileDir) {
-  $ProfileDir = "$env:TEMP\anti-bubble-$Browser-profile"
+  if ($Fresh) {
+    # timestamped dir => every round gets a brand new profile
+    $ProfileDir = "$env:TEMP\anti-bubble-$Browser-p" + (Get-Date -Format 'yyyyMMdd-HHmmss')
+  } else {
+    $ProfileDir = "$env:TEMP\anti-bubble-$Browser-profile"
+  }
 }
 
 # Reusing an existing instance makes the browser ignore the launch flags,

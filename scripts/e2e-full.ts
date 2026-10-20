@@ -86,6 +86,26 @@ async function main(): Promise<void> {
   const extId = loaded?.id as string;
   console.log('扩展 id:', extId);
 
+  // ①.5 **在导航之前**就连上 service worker，
+  //     否则它的控制台日志已经发生、抓不到了（Runtime.enable 不回放历史）。
+  //
+  //     直接连 SW 的 webSocketDebuggerUrl（flat session 路由那套对 SW 不适用）。
+  let swCdp: Cdp | null = null;
+  {
+    const list = (await httpJson('/json/list')) as any[];
+    const sw = list.find(
+      (t) => t.type === 'service_worker' && (t.url ?? '').includes(extId),
+    );
+    if (sw) {
+      swCdp = await Cdp.connect(sw.webSocketDebuggerUrl);
+      await swCdp.send('Runtime.enable');
+      await swCdp.send('Log.enable');
+      console.log('已连上 SW，开始抓它的日志');
+    } else {
+      console.log('SW 还没起来（稍后由 content script 唤醒），日志可能抓不全');
+    }
+  }
+
   // ② 注入 LLM 配置
   //
   // 用**扩展页面**（popup）注入，不用 service worker：
@@ -123,10 +143,12 @@ async function main(): Promise<void> {
   const injected = await popupCdp.eval(`(async () => {
     const cfg = ${JSON.stringify(cfg)};
     await chrome.storage.local.set({ llmConfig: cfg });
+    // **清掉判定/词表缓存**，否则上一轮的缓存会让这次测不出真实行为
+    await chrome.storage.local.remove(['verdictCache', 'wordlistCache', 'blockedLog']);
     const back = await chrome.storage.local.get(['llmConfig']);
-    return JSON.stringify({ saved: !!back.llmConfig, model: back.llmConfig?.model, maxTokens: back.llmConfig?.maxTokens });
+    return JSON.stringify({ saved: !!back.llmConfig, model: back.llmConfig?.model, maxTokens: back.llmConfig?.maxTokens, cachesCleared: true });
   })()`);
-  console.log('LLM 配置注入:', injected);
+  console.log('LLM 配置注入（并清空判定/词表缓存）:', injected);
   popupCdp.close();
   await browser.send('Target.closeTarget', { targetId: popupId });
 
@@ -167,7 +189,7 @@ async function main(): Promise<void> {
     if (state.notices > 0 || state.marks > 0) break;
   }
 
-  console.log('\n=== 扩展日志 ===');
+  console.log('\n=== 扩展日志（页面）===');
   for (const e of cdp.events) {
     if (e.method === 'Runtime.consoleAPICalled') {
       const p = e.params;
@@ -180,6 +202,30 @@ async function main(): Promise<void> {
         console.log('[EXCEPTION] ' + desc.slice(0, 400));
       }
     }
+  }
+
+  console.log('\n=== service worker 日志 ===');
+  if (swCdp) {
+    let n = 0;
+    for (const e of swCdp.events) {
+      if (e.method === 'Runtime.consoleAPICalled') {
+        const p = e.params;
+        const text = (p.args ?? []).map((a: any) => a.value ?? a.description ?? a.type).join(' ');
+        console.log(`[sw ${p.type}] ${text}`);
+        n++;
+      } else if (e.method === 'Runtime.exceptionThrown') {
+        const d = e.params.exceptionDetails;
+        console.log('[sw EXCEPTION] ' + String(d?.exception?.description ?? d?.text).slice(0, 400));
+        n++;
+      } else if (e.method === 'Log.entryAdded') {
+        const en = e.params.entry;
+        console.log(`[sw log.${en.level}] ${en.text}`.slice(0, 300));
+        n++;
+      }
+    }
+    if (!n) console.log('(SW 没有输出)');
+  } else {
+    console.log('(没连上 SW)');
   }
 
   // 后台各阶段

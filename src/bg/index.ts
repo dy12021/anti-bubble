@@ -13,15 +13,18 @@ chrome.runtime.onMessage.addListener(
       sendResponse({ id: '', ok: false, error: '消息格式非法' });
       return false;
     }
+    const type = msg.type;
+    console.info(`[anti-bubble] 收到消息 ${type}`);
     handleMessage(msg)
-      .then(sendResponse)
-      .catch((e: unknown) =>
-        sendResponse({
-          id: msg.id,
-          ok: false,
-          error: e instanceof Error ? e.message : String(e),
-        }),
-      );
+      .then((r) => {
+        console.info(`[anti-bubble] ${type} -> ok=${r.ok}${r.error ? ' err=' + r.error : ''}`);
+        sendResponse(r);
+      })
+      .catch((e: unknown) => {
+        const err = e instanceof Error ? e.message : String(e);
+        console.error(`[anti-bubble] ${type} 异常：${err}`);
+        sendResponse({ id: msg.id, ok: false, error: err });
+      });
     return true; // 保持消息通道开放，等异步结果
   },
 );
