@@ -87,13 +87,41 @@ export async function fetchConclusion(
   });
 }
 
+/**
+ * 剥掉 B 站搜索接口返回的**高亮标记**。
+ *
+ * 搜索接口的 `title` 不是纯文本：命中的关键词会被包成
+ * `<em class="keyword">人类</em>`。不处理的话：
+ * - 反向推荐卡片会把 `<em class="keyword">` 原样显示给用户；
+ * - 立场比对 prompt 里也会带上这些标签，模型读到的标题是脏的。
+ *
+ * 用正则剥（不是 innerHTML）：返回值要能安全地进 textContent。
+ */
+export function stripHighlight(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]+>/g, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(Number(d)))
+    .trim();
+}
+
 /** 搜索视频（需 WBI 签名）。 */
 export async function searchVideos(c: BiliClient, keyword: string): Promise<SearchItem[]> {
   const data = await c.getSigned<{ result?: SearchItem[] }>(
     '/x/web-interface/wbi/search/type',
     { keyword, search_type: 'video' },
   );
-  return data?.result ?? [];
+  const list = data?.result ?? [];
+  return list.map((it) => ({
+    ...it,
+    title: stripHighlight(it.title ?? ''),
+    author: stripHighlight(it.author ?? ''),
+  }));
 }
 
 /**

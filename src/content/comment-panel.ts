@@ -340,7 +340,25 @@ export class CommentPanel {
     const mark = doc.createElement('span');
     mark.className = `${CSS_PREFIX}-mark`;
     mark.setAttribute('data-ab-prefix', `${CSS_PREFIX}-mark`);
+    mark.setAttribute('role', 'button');
+    mark.setAttribute('tabindex', '0');
+    mark.setAttribute('title', '点此取消标识');
     mark.textContent = v.reason || '立场相反';
+
+    // 标识也要能撤：点一下去掉标签 + 写白名单（之后不再重复标识）。
+    const revoke = (e: Event): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      mark.remove();
+      this.opts.onRevoke?.(v.itemId);
+      this.updateCount();
+    };
+    mark.addEventListener('click', revoke);
+    mark.addEventListener('keydown', (e) => {
+      const ke = e as KeyboardEvent;
+      if (ke.key === 'Enter' || ke.key === ' ') revoke(e);
+    });
+
     row.querySelector(`.${CSS_PREFIX}-comment-text`)?.appendChild(mark);
   }
 

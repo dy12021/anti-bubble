@@ -6,6 +6,7 @@ import {
   fetchVideoIdByBvid,
   searchVideos,
   fetchComments,
+  stripHighlight,
 } from '../../src/bili/api';
 import type { HistoryItem, VideoItem, SearchItem, CommentItem } from '../../src/bili/types';
 
@@ -214,6 +215,73 @@ describe('searchVideos', () => {
     ]);
 
     await expect(searchVideos(client, '关键词')).resolves.toEqual([]);
+  });
+
+  /**
+   * 回归防护：搜索接口的 title 带**高亮标记**（`<em class="keyword">`）。
+   * 不剥掉的话，反向推荐卡片会把标签原样显示给用户，
+   * 立场比对 prompt 里也会带上这些脏标记。
+   */
+  it('剥掉标题里的高亮标记', async () => {
+    const { client } = makeClient([
+      [
+        '/x/web-interface/wbi/search/type',
+        {
+          code: 0, message: '0',
+          data: {
+            result: [
+              { ...SEARCH_RESULT, title: 'AI 与<em class="keyword">人类</em>共生：不可逆的科技浪潮' },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const items = await searchVideos(client, '关键词');
+    expect(items[0]!.title).toBe('AI 与人类共生：不可逆的科技浪潮');
+    expect(items[0]!.title).not.toContain('<em');
+  });
+
+  it('剥掉作者名里的高亮标记', async () => {
+    const { client } = makeClient([
+      [
+        '/x/web-interface/wbi/search/type',
+        { code: 0, message: '0', data: { result: [{ ...SEARCH_RESULT, author: '<em class="keyword">UP</em>主' }] } },
+      ],
+    ]);
+
+    const items = await searchVideos(client, '关键词');
+    expect(items[0]!.author).toBe('UP主');
+  });
+
+  it('还原 HTML 实体', async () => {
+    const { client } = makeClient([
+      [
+        '/x/web-interface/wbi/search/type',
+        { code: 0, message: '0', data: { result: [{ ...SEARCH_RESULT, title: 'A &amp; B &quot;C&quot; &lt;D&gt;' }] } },
+      ],
+    ]);
+
+    const items = await searchVideos(client, '关键词');
+    expect(items[0]!.title).toBe('A & B "C" <D>');
+  });
+});
+
+describe('stripHighlight', () => {
+  it('空串返回空串', () => {
+    expect(stripHighlight('')).toBe('');
+  });
+
+  it('没有标记时原样返回（只去首尾空白）', () => {
+    expect(stripHighlight('  普通标题  ')).toBe('普通标题');
+  });
+
+  it('剥掉任意标签', () => {
+    expect(stripHighlight('<span class="x">标题</span>')).toBe('标题');
+  });
+
+  it('剥掉数字实体', () => {
+    expect(stripHighlight('AI&#32;时代')).toBe('AI 时代');
   });
 });
 

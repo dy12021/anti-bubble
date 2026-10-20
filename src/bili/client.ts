@@ -22,8 +22,13 @@ export interface BiliClientOptions {
 
 const RETRY_LIMIT = 3;
 const BASE_INTERVAL_MS = 1200;
-/** -352 是 B 站风控码，412 是风控页。两者都要退避。 */
-const RISK_CODES = new Set([-352]);
+/**
+ * B 站风控码。-352 是最常见的，-412（请求过于频繁）同样要退避重试。
+ * 漏掉 -412 的后果：反信息茧房模式一次要连打好几个搜索，
+ * 中途撞上 -412 就整轮召回作废，而且**失败被静默吞掉**——
+ * 用户只看到「没有相反观点」，完全不知道是风控还是真没有。
+ */
+const RISK_CODES = new Set([-352, -412]);
 
 export class BiliClient {
   private lastRequestAt = 0;
@@ -144,6 +149,14 @@ export class BiliClient {
             await this.sleep(BASE_INTERVAL_MS * Math.pow(2, attempt));
             continue;
           }
+          if (env.code !== 0) {
+            // **别把失败悄悄咽掉**：调用方拿到的是 null/空数组，
+            // 分不清「这个接口没数据」和「被风控/被拒了」。
+            // 这条日志在 content script 里，打在页面控制台上。
+            console.warn(
+              `[anti-bubble] B 站接口返回 code=${env.code} msg=${env.message ?? '-'}：${url.split('?')[0]}`,
+            );
+          }
           return env;
         }
         return null;
@@ -151,6 +164,7 @@ export class BiliClient {
         await this.sleep(BASE_INTERVAL_MS * Math.pow(2, attempt));
       }
     }
+    console.warn(`[anti-bubble] B 站接口重试 ${RETRY_LIMIT} 次仍失败：${url.split('?')[0]}`);
     return null;
   }
 

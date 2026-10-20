@@ -230,7 +230,8 @@ export class PageController {
           // 「可撤销」是铁律，隐藏类动作不能没有出口。
           applyFold(root, v.itemId, v, (id) => this.deps.onRevoke?.(id));
         } else if (v.action === 'mark') {
-          applyMark(root, v.itemId, v);
+          // 标识同样可撤销：点标签就撤掉 + 写白名单。
+          applyMark(root, v.itemId, v, (id) => this.deps.onRevoke?.(id));
         }
       } catch {
         // 单条失败不影响其它

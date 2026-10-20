@@ -32,7 +32,9 @@ export function injectStyles(root: ParentNode): void {
   display: inline-block; margin-left: 6px;
   padding: 0 5px; font-size: 11px; line-height: 1.6;
   color: #fff; background: #fb7299; border-radius: 3px;
+  cursor: pointer; user-select: none;
 }
+.${CSS_PREFIX}-mark:hover { background: #e4628a; }
 .${CSS_PREFIX}-recommend {
   margin: 12px 0; padding: 12px;
   border: 1px dashed #fb7299; border-radius: 6px;
@@ -41,6 +43,7 @@ export function injectStyles(root: ParentNode): void {
 .${CSS_PREFIX}-recommend-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
 .${CSS_PREFIX}-recommend-item { display: flex; gap: 6px; margin: 6px 0; font-size: 13px; }
 .${CSS_PREFIX}-recommend-reason { color: #61666d; font-size: 12px; }
+.${CSS_PREFIX}-recommend-empty { color: #9499a0; font-size: 12px; border-style: solid; }
 
 /* --- 自有评论区 --- */
 .${CSS_PREFIX}-comments {

@@ -5,6 +5,7 @@ import { collectColdStart } from '../profile/collect';
 import { recallOpposite } from '../recommend/recall';
 import { CommentPanel } from './comment-panel';
 import type { RecommendItem } from '../actions/recommend';
+import { resolveRecommendationAnchor, renderNoOpposition } from '../actions/recommend';
 import { PageController } from './controller';
 import { videoSubject } from '../pipeline/subject';
 import { MSG } from '../shared/messages';
@@ -177,13 +178,18 @@ async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
  * 3. 把候选交给后台做 LLM 立场判定，拿回结果渲染
  *
  * 任何一步失败都静默放弃——推荐是锦上添花，不该影响主流程。
+ *
+ * 返回 `recalled` 是为了区分两种「没结果」：
+ * - 没召回到候选（被风控/搜不了）→ 什么都不显示
+ * - 召回到了但精判没选出相反观点 → 显示一句「没找到」
+ * 不区分的话，用户只看到「插件没反应」。
  */
 async function fetchOppositeRecommendations(
   video: VideoContext | null,
   settings: Settings | null,
-): Promise<RecommendItem[]> {
-  if (!video || !settings) return [];
-  if (settings.mode !== 'anti') return [];
+): Promise<{ items: RecommendItem[]; recalled: boolean }> {
+  if (!video || !settings) return { items: [], recalled: false };
+  if (settings.mode !== 'anti') return { items: [], recalled: false };
 
   // ① 要词表
   const wlResp = (await send({
@@ -192,22 +198,38 @@ async function fetchOppositeRecommendations(
   })) as { ok?: boolean; data?: { oppositeKeywords?: string[] } } | null;
 
   const keywords = wlResp?.ok ? (wlResp.data?.oppositeKeywords ?? []) : [];
-  if (keywords.length === 0) return [];
+  if (keywords.length === 0) {
+    console.info('[anti-bubble] 反向推荐：词表里没有对立检索词（这个视频可能没有明确立场）');
+    return { items: [], recalled: false };
+  }
 
   // ② 在页面上下文搜 B 站
   try {
     const candidates = await recallOpposite(bili, keywords);
-    if (candidates.length === 0) return [];
+    if (candidates.length === 0) {
+      console.warn('[anti-bubble] 反向推荐：没召回到候选视频（可能被 B 站风控了）');
+      return { items: [], recalled: false };
+    }
 
     // ③ 交给后台判立场
+    console.info(
+      `[anti-bubble] 反向推荐：候选 ${candidates.length} 条 → ` +
+        candidates.slice(0, 6).map((c, i) => `${i + 1}.${c.title.slice(0, 24)}`).join(' / '),
+    );
     const judgeResp = (await send({
       type: MSG.GET_RECOMMENDATIONS, id: 'rec',
       payload: { video, candidates },
     })) as { ok?: boolean; data?: { items?: RecommendItem[] } } | null;
 
-    return judgeResp?.ok ? (judgeResp.data?.items ?? []) : [];
+    const items = judgeResp?.ok ? (judgeResp.data?.items ?? []) : [];
+    if (items.length === 0) {
+      console.info(
+        `[anti-bubble] 反向推荐：召回到 ${candidates.length} 条候选，但没选出明确的相反观点`,
+      );
+    }
+    return { items, recalled: true };
   } catch {
-    return [];
+    return { items: [], recalled: false };
   }
 }
 
@@ -285,15 +307,19 @@ async function main(): Promise<void> {
     void mountCommentPanel(video, settings, send, ctrl);
   }
 
-  // 反向推荐：插在视频标题后面
+  // 反向推荐：插在视频信息区下面（整宽独立区块）。
+  // 插在标题**旁边**会破坏布局——B 站标题的父级是 flex 行，
+  // 塞进去会被挤成第三列、压在播放器上面。
   if (video) {
-    void fetchOppositeRecommendations(video, settings).then((items) => {
-      if (items.length === 0) return;
-      const anchor =
-        document.querySelector('.video-title') ??
-        document.querySelector('h1') ??
-        document.body?.firstElementChild;
-      if (anchor) ctrl.showRecommendations(anchor, items);
+    void fetchOppositeRecommendations(video, settings).then(({ items, recalled }) => {
+      const anchor = resolveRecommendationAnchor(document);
+      if (!anchor) return;
+      if (items.length > 0) {
+        ctrl.showRecommendations(anchor, items);
+      } else if (recalled) {
+        // 召回到了候选但没选出相反观点：说一句，别让用户以为插件坏了
+        renderNoOpposition(document, anchor);
+      }
     });
   }
 

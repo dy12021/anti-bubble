@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { applyMark } from '../../src/actions/mark';
-import { renderRecommendations } from '../../src/actions/recommend';
+import { renderRecommendations, resolveRecommendationAnchor, renderNoOpposition } from '../../src/actions/recommend';
 import type { Verdict } from '../../src/shared/types';
 
 function fixture(): Document {
@@ -81,6 +81,49 @@ describe('标识动作', () => {
     expect(mark).not.toBeNull();
     expect(mark?.parentElement?.className).toContain('bili-video-card__info--tit');
   });
+
+  /**
+   * 铁律：折叠、隐藏、标识**都要可撤销**。
+   * 立场判断是模型的判断，判错了用户得能自己摘掉这个标签。
+   */
+  it('点标识能撤销（去掉标签 + 回调写白名单）', () => {
+    const d = fixture();
+    const onRevoke = vi.fn();
+    applyMark(d, '111', v, onRevoke);
+    const mark = d.querySelector('[data-ab-prefix="ab-mark"]') as HTMLElement;
+    expect(mark).not.toBeNull();
+
+    mark.click();
+    expect(d.querySelector('[data-ab-prefix="ab-mark"]')).toBeNull();
+    expect(onRevoke).toHaveBeenCalledWith('111');
+  });
+
+  it('撤销不隐藏内容（标识本来就没隐藏）', () => {
+    const d = fixture();
+    applyMark(d, '111', v, () => {});
+    (d.querySelector('[data-ab-prefix="ab-mark"]') as HTMLElement).click();
+    const el = d.querySelector('.reply-item') as HTMLElement;
+    expect(el.style.display).not.toBe('none');
+  });
+
+  it('标识可聚焦并支持键盘撤销', () => {
+    const d = fixture();
+    const onRevoke = vi.fn();
+    applyMark(d, '111', v, onRevoke);
+    const mark = d.querySelector('[data-ab-prefix="ab-mark"]') as HTMLElement;
+    expect(mark.getAttribute('tabindex')).toBe('0');
+    expect(mark.getAttribute('role')).toBe('button');
+    mark.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(onRevoke).toHaveBeenCalledWith('111');
+  });
+
+  it('没给撤销回调时点标识也不会炸', () => {
+    const d = fixture();
+    applyMark(d, '111', v);
+    const mark = d.querySelector('[data-ab-prefix="ab-mark"]') as HTMLElement;
+    expect(() => mark.click()).not.toThrow();
+    expect(d.querySelector('[data-ab-prefix="ab-mark"]')).toBeNull();
+  });
 });
 
 describe('推荐卡片', () => {
@@ -125,5 +168,80 @@ describe('推荐卡片', () => {
     expect(box?.className).toContain('ab-recommend');
     // 区块是 anchor 的兄弟节点，不是 anchor 的子节点
     expect(box?.parentElement).toBe(d.querySelector('#anchor')?.parentElement);
+  });
+});
+
+/**
+ * 反向推荐区块的插入位置。
+ *
+ * 回归防护：B 站视频页标题 h1 的父级 `.video-info-title-inner` 是 **flex 行**。
+ * 早先版本把区块插成标题的兄弟节点 → 它成了第三个 flex item，
+ * 被挤到右边、压在播放器上面，还把原布局挤歪。
+ * 正确做法是插在**整个信息区下面**，成为整宽独立区块。
+ */
+describe('反向推荐区块的插入位置', () => {
+  function videoPageDom(): Document {
+    return new DOMParser().parseFromString(
+      `<html><body>
+        <div class="left-column">
+          <div id="viewbox_report" class="video-info-container">
+            <div class="video-info-title">
+              <div class="video-info-title-inner">
+                <h1 class="video-title">视频标题</h1>
+                <div class="video-info-tags">标签</div>
+              </div>
+            </div>
+            <div class="video-desc-container">简介</div>
+          </div>
+        </div>
+      </body></html>`, 'text/html',
+    );
+  }
+
+  it('优先挂在视频信息区（#viewbox_report）上', () => {
+    const d = videoPageDom();
+    expect(resolveRecommendationAnchor(d)?.id).toBe('viewbox_report');
+  });
+
+  it('不挂在标题的 flex 父级上', () => {
+    const d = videoPageDom();
+    const anchor = resolveRecommendationAnchor(d);
+    expect(anchor?.className).not.toContain('video-info-title-inner');
+  });
+
+  it('没有信息区时退回标题容器', () => {
+    const d = new DOMParser().parseFromString(
+      `<html><body>
+        <div class="video-info-title"><h1 class="video-title">t</h1></div>
+      </body></html>`, 'text/html',
+    );
+    expect(resolveRecommendationAnchor(d)?.className).toContain('video-info-title');
+  });
+
+  it('什么都没有时返回 null', () => {
+    const d = new DOMParser().parseFromString('<html><body></body></html>', 'text/html');
+    expect(resolveRecommendationAnchor(d)).toBeNull();
+  });
+
+  it('用这个锚点渲染，区块落在信息区之后', () => {
+    const d = videoPageDom();
+    const anchor = resolveRecommendationAnchor(d)!;
+    renderRecommendations(d, anchor, [
+      { bvid: 'BV1', title: '相反观点视频', author: 'UP', reason: '它主张相反的观点', url: 'u' },
+    ]);
+    const box = d.querySelector('[data-ab-prefix="ab-recommend"]');
+    expect(box?.parentElement).toBe(d.querySelector('.left-column'));
+    // 不在 flex 行里
+    expect(box?.parentElement?.className).not.toContain('video-info-title-inner');
+  });
+
+  it('没找到相反观点时给一句说明（别让用户以为插件坏了）', () => {
+    const d = videoPageDom();
+    const anchor = resolveRecommendationAnchor(d)!;
+    renderNoOpposition(d, anchor);
+    const note = d.querySelector('[data-ab-prefix="ab-recommend-empty"]');
+    expect(note).not.toBeNull();
+    expect(note?.textContent).toContain('没找到');
+    expect(note?.parentElement).toBe(d.querySelector('.left-column'));
   });
 });
