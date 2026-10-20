@@ -18,6 +18,10 @@ function makeDeps(timeoutMs?: number) {
   const handlers: Array<(e: MessageEvent) => void> = [];
   const addEventListener = vi.fn((_type: 'message', handler: (e: MessageEvent) => void) => {
     handlers.push(handler);
+    // 模拟页面脚本加载完发就绪信号（真实 page-fetch.js 注入后立刻发）
+    setTimeout(() => {
+      handler({ data: { __ab: true, kind: 'ready' } } as MessageEvent);
+    }, 0);
   });
   const removeEventListener = vi.fn((_type: 'message', handler: (e: MessageEvent) => void) => {
     const i = handlers.indexOf(handler);
@@ -54,12 +58,19 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** 让出微任务与定时器，等桥的「等就绪 → 发请求」走完。 */
+async function tick(): Promise<void> {
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+}
+
 describe('createPageBridge', () => {
   it('正常请求能拿回 JSON 结果', async () => {
     const { deps, handlers, postMessage } = makeDeps();
     const request = createPageBridge(deps);
 
     const p = request('https://api.bilibili.com/x/web-interface/nav');
+    await tick();
 
     expect(postMessage).toHaveBeenCalledTimes(1);
     const sent = postMessage.mock.calls[0]![0] as SentMessage;
@@ -87,6 +98,7 @@ describe('createPageBridge', () => {
 
     void request('https://api.bilibili.com/a');
     void request('https://api.bilibili.com/b');
+    await tick();
 
     const first = postMessage.mock.calls[0]![0] as SentMessage;
     const second = postMessage.mock.calls[1]![0] as SentMessage;
@@ -120,6 +132,7 @@ describe('createPageBridge', () => {
     const request = createPageBridge(deps);
 
     const p = request('https://api.bilibili.com/x/web-interface/nav');
+    await tick();
     const sent = postMessage.mock.calls[0]![0] as SentMessage;
 
     handlers[0]!({
@@ -135,6 +148,7 @@ describe('createPageBridge', () => {
     const request = createPageBridge(deps);
 
     const p = request('https://api.bilibili.com/x/web-interface/nav');
+    await vi.advanceTimersByTimeAsync(0);
 
     handlers[0]!({
       data: { __ab: true, kind: 'res', id: 'ab-not-mine', ok: true, payload: { code: 0 } },
@@ -170,6 +184,7 @@ describe('createPageBridge', () => {
     const request = createPageBridge(deps);
 
     const p = request('https://api.bilibili.com/x/web-interface/nav');
+    await tick();
     const sent = postMessage.mock.calls[0]![0] as SentMessage;
     handlers[0]!({
       data: { __ab: true, kind: 'res', id: sent.id, ok: true, payload: { code: 0 } },

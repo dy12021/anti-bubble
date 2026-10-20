@@ -22,6 +22,10 @@ function makeRealisticDeps(timeoutMs = 1000) {
   const deps: PageBridgeDeps = {
     addEventListener: (_type, handler) => {
       handlers.push(handler);
+      // 模拟页面脚本就绪信号
+      setTimeout(() => {
+        handler({ data: { __ab: true, kind: 'ready' } } as MessageEvent);
+      }, 0);
     },
     removeEventListener: (_type, handler) => {
       const i = handlers.indexOf(handler);
@@ -48,15 +52,22 @@ function makeRealisticDeps(timeoutMs = 1000) {
     }
   };
 
-  return { deps, respond, getPosted: () => lastPosted };
+  /** 等「等就绪 → 发请求」走完。 */
+  const flush = async (): Promise<void> => {
+    await new Promise((r) => setTimeout(r, 0));
+    await new Promise((r) => setTimeout(r, 0));
+  };
+
+  return { deps, respond, flush, getPosted: () => lastPosted };
 }
 
 describe('页面桥：自回声', () => {
   it('发出的请求会被自己收到，但不能当成响应', async () => {
-    const { deps, respond } = makeRealisticDeps();
+    const { deps, respond, flush } = makeRealisticDeps();
     const bridge = createPageBridge(deps);
 
     const p = bridge('https://api.bilibili.com/x/web-interface/nav');
+    await flush();
 
     // 页面脚本稍后回响应
     respond({ code: 0, message: '0', data: { isLogin: true } });
@@ -65,25 +76,28 @@ describe('页面桥：自回声', () => {
   });
 
   it('请求消息带 kind: req', async () => {
-    const { deps, getPosted } = makeRealisticDeps();
+    const { deps, getPosted, flush } = makeRealisticDeps();
     const bridge = createPageBridge(deps);
     void bridge('https://api.bilibili.com/x/web-interface/nav');
+    await flush();
     expect(getPosted()?.kind).toBe('req');
   });
 
   it('响应消息带 kind: res', async () => {
-    const { deps, respond, getPosted } = makeRealisticDeps();
+    const { deps, respond, getPosted, flush } = makeRealisticDeps();
     const bridge = createPageBridge(deps);
     const p = bridge('https://api.bilibili.com/x/web-interface/nav');
+    await flush();
     respond({ code: 0, data: 1 });
     await p;
     expect(getPosted()?.kind).toBe('req');
   });
 
   it('页面脚本报错时 resolve 成 null', async () => {
-    const { deps, respond } = makeRealisticDeps();
+    const { deps, respond, flush } = makeRealisticDeps();
     const bridge = createPageBridge(deps);
     const p = bridge('https://api.bilibili.com/x/web-interface/nav');
+    await flush();
     respond(undefined, false);
     expect(await p).toBeNull();
   });
@@ -96,13 +110,72 @@ describe('页面桥：自回声', () => {
   });
 
   it('忽略无关的 message 事件', async () => {
-    const { deps, respond } = makeRealisticDeps();
+    const { deps, respond, flush } = makeRealisticDeps();
     const bridge = createPageBridge(deps);
     const p = bridge('https://api.bilibili.com/x/web-interface/nav');
+    await flush();
     // 别的扩展/脚本的消息：id 对不上，必须被忽略
     respond({ x: 1 }, true, 'not-our-id');
     // 自己的响应
     respond({ code: 0, data: { real: true } });
     expect(await p).toEqual({ code: 0, data: { real: true } });
+  });
+});
+
+describe('页面桥：等页面脚本就绪', () => {
+  /**
+   * 回归防护：content script 用 `<script src>` 注入 page-fetch.js，
+   * 那是**异步**加载的。注入完立刻发请求，页面脚本可能还没执行完，
+   * 请求发出去没人接，只能等 15 秒超时。
+   *
+   * 症状极具迷惑性：**第一个** B 站请求必失败，后面的都正常——
+   * 很容易被误判成「这个接口不能用」或「风控了」。
+   */
+  it('页面脚本就绪前不发请求', async () => {
+    const handlers: Array<(e: MessageEvent) => void> = [];
+    const posted: any[] = [];
+    const deps: PageBridgeDeps = {
+      addEventListener: (_t, h) => handlers.push(h),
+      removeEventListener: () => {},
+      postMessage: (m) => posted.push(m),
+      timeoutMs: 1000,
+    };
+
+    const bridge = createPageBridge(deps);
+    const p = bridge('https://api.bilibili.com/x/web-interface/view?bvid=BV1');
+
+    // 页面脚本还没就绪：不应该发出任何请求
+    await new Promise((r) => setTimeout(r, 30));
+    expect(posted).toHaveLength(0);
+
+    // 页面脚本就绪
+    for (const h of handlers) {
+      h({ data: { __ab: true, kind: 'ready' } } as MessageEvent);
+    }
+    await new Promise((r) => setTimeout(r, 10));
+    expect(posted).toHaveLength(1);
+    expect(posted[0].kind).toBe('req');
+
+    // 回应
+    for (const h of handlers) {
+      h({
+        data: { __ab: true, kind: 'res', id: posted[0].id, ok: true, payload: { code: 0, data: { ok: 1 } } },
+      } as MessageEvent);
+    }
+    expect(await p).toEqual({ code: 0, data: { ok: 1 } });
+  });
+
+  it('页面脚本始终不就绪时，超时返回 null 而不是挂死', async () => {
+    const deps: PageBridgeDeps = {
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      postMessage: () => {},
+      timeoutMs: 60,
+    };
+    const bridge = createPageBridge(deps);
+    const start = Date.now();
+    expect(await bridge('https://api.bilibili.com/x')).toBeNull();
+    // 不应该等满 15 秒（页面脚本没就绪的超时是 3 秒）
+    expect(Date.now() - start).toBeLessThan(2000);
   });
 });

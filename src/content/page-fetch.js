@@ -69,4 +69,10 @@
         post({ __ab: true, kind: 'res', id: id, ok: false, error: message });
       });
   });
+
+  // **就绪信号**：content script 是用 <script src> 注入本文件的，
+  // 那是**异步**加载的 —— 注入后立刻发请求的话，页面脚本可能还没执行，
+  // 请求发出去没人接，15 秒后超时。
+  // 所以这里执行完就报一声「我好了」，桥在发第一个请求前等这个信号。
+  post({ __ab: true, kind: 'ready' });
 })();

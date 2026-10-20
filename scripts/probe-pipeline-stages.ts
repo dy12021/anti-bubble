@@ -75,9 +75,25 @@ async function main(): Promise<void> {
   const browser = await Cdp.connect(version.webSocketDebuggerUrl);
 
   // 唤醒 service worker（懒加载）
+  //
+  // **注意 1**：这里**不要** reload 页面来唤醒。
+  // 端到端测试运行时，reload 会把正在观察的判定状态整个冲掉，
+  // 让人误以为「插件没反应」。要 reload 请显式设 RELOAD=1。
+  //
+  // **注意 2**：必须按扩展 id 过滤 service worker 目标——
+  // 浏览器里还有内置扩展的 SW（Google Network Speech 等），连错了会
+  // 报 "chrome is not defined"。
+  const extId = process.env.EXT_ID ?? 'jlfdpgneomllhbpaiejjhoigophhejid';
+  const findOurSw = async (): Promise<any | undefined> => {
+    const list = (await httpJson('/json/list')) as any[];
+    return list.find(
+      (t) => t.type === 'service_worker' && (t.url ?? '').includes(extId),
+    );
+  };
+
   const targets = (await httpJson('/json/list')) as any[];
-  let sw = targets.find((t) => t.type === 'service_worker');
-  if (!sw) {
+  let sw = await findOurSw();
+  if (!sw && process.env.RELOAD === '1') {
     const page = targets.find((t) => t.type === 'page');
     if (page) {
       const pc = await Cdp.connect(page.webSocketDebuggerUrl);
@@ -86,7 +102,7 @@ async function main(): Promise<void> {
       await new Promise((r) => setTimeout(r, 3000));
       pc.close();
     }
-    sw = (await httpJson('/json/list')).find((t: any) => t.type === 'service_worker');
+    sw = await findOurSw();
   }
   if (!sw) {
     console.error('没有 service worker 目标');

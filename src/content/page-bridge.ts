@@ -60,6 +60,9 @@ export const BILI_API_PATTERN = /^https:\/\/api\.bilibili\.com\//;
 /** 默认超时。超过就当这次请求失败。 */
 export const DEFAULT_TIMEOUT_MS = 15000;
 
+/** 等页面脚本就绪的最长时间。超过就当页面脚本没加载。 */
+export const READY_TIMEOUT_MS = 3000;
+
 export interface PageBridgeDeps {
   addEventListener: (type: 'message', handler: (e: MessageEvent) => void) => void;
   removeEventListener: (type: 'message', handler: (e: MessageEvent) => void) => void;
@@ -106,8 +109,37 @@ export function createPageBridge(deps: PageBridgeDeps): (url: string) => Promise
   const pending = new Map<string, (value: unknown) => void>();
   let listening = false;
 
+  // 页面脚本就绪了吗？
+  //
+  // content script 是用 `<script src>` 注入 page-fetch.js 的，那是**异步**加载的。
+  // 注入完立刻发请求，页面脚本可能还没执行完 —— 请求发出去没人接，
+  // 只能等 15 秒超时。症状是「**第一个** B 站请求必失败，后面的都正常」，
+  // 很容易被误判成「这个接口不能用」。
+  //
+  // 所以：页面脚本执行完会 post 一条 { kind: 'ready' }，桥在这里等它。
+  let ready = false;
+  let readyWaiters: Array<() => void> = [];
+
+  const markReady = (): void => {
+    ready = true;
+    const waiters = readyWaiters;
+    readyWaiters = [];
+    for (const w of waiters) w();
+  };
+
+  /** 等页面脚本就绪，最多等 readyTimeoutMs。 */
+  const waitReady = async (): Promise<void> => {
+    if (ready) return;
+    await Promise.race([
+      new Promise<void>((resolve) => readyWaiters.push(resolve)),
+      new Promise<void>((resolve) => setTimeout(resolve, READY_TIMEOUT_MS)),
+    ]);
+  };
+
   const onMessage = (e: MessageEvent): void => {
-    const data = e.data as Partial<PageResponseMessage> | undefined;
+    const data = e.data as
+      | (Omit<Partial<PageResponseMessage>, 'kind'> & { kind?: 'req' | 'res' | 'ready' })
+      | undefined;
     if (!data || data.__ab !== true) return;
     // **必须区分请求与响应**：window.postMessage 会把消息派发回同一个 window，
     // 所以 content script 自己发出的请求也会被这个监听器收到。
@@ -115,6 +147,10 @@ export function createPageBridge(deps: PageBridgeDeps): (url: string) => Promise
     // 只靠 __ab+id 过滤会把**请求自己**当成响应，
     // 于是每次请求都立刻 resolve 成 null，真实响应到达时已经没人等。
     // 这个 bug 的症状是「所有 B 站请求都失败」，包括登录态检测。
+    if (data.kind === 'ready') {
+      markReady();
+      return;
+    }
     if (data.kind !== 'res') return;
     if (typeof data.id !== 'string') return;
     const settle = pending.get(data.id);
@@ -156,11 +192,15 @@ export function createPageBridge(deps: PageBridgeDeps): (url: string) => Promise
         deps.addEventListener('message', onMessage);
       }
 
-      try {
-        deps.postMessage({ __ab: true, kind: 'req', id, url } satisfies PageRequestMessage);
-      } catch {
-        settle(null);
-      }
+      // 等页面脚本就绪再发（见上面 ready 的说明）
+      void waitReady().then(() => {
+        if (settled) return;
+        try {
+          deps.postMessage({ __ab: true, kind: 'req', id, url } satisfies PageRequestMessage);
+        } catch {
+          settle(null);
+        }
+      });
     });
 
   return request;
