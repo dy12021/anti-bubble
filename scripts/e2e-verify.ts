@@ -149,6 +149,22 @@ async function main(): Promise<void> {
   const injected = await popupCdp.eval(`(async () => {
     await chrome.storage.local.set({ llmConfig: ${JSON.stringify(cfg)} });
     await chrome.storage.local.remove(['verdictCache', 'wordlistCache', 'blockedLog', 'profile']);
+    // 注入一份画像（可选）：验证「画像 → 折叠」这条路径——
+    // 冷启动画像需要登录 B 站，测试环境未登录，只能用注入的方式验。
+    const injectProfile = ${JSON.stringify(process.env.INJECT_PROFILE ?? '')};
+    if (injectProfile) {
+      const dislikes = injectProfile.split(',').map(s => s.trim()).filter(Boolean);
+      await chrome.storage.local.set({
+        profile: {
+          interests: [{ tag: '数码', weight: 0.8 }],
+          dislikes,
+          stanceHints: {},
+          topics: ['手机'],
+          updatedAt: new Date().toISOString(),
+          sampleCount: 10,
+        },
+      });
+    }
     // 模式切换（cocoon=信息茧房 / anti=反信息茧房）
     await new Promise((resolve) => {
       chrome.runtime.sendMessage(
@@ -166,9 +182,9 @@ async function main(): Promise<void> {
         () => { void chrome.runtime.lastError; resolve(null); },
       );
     });
-    const st = await chrome.storage.local.get(['llmConfig', 'settings']);
+    const st = await chrome.storage.local.get(['llmConfig', 'settings', 'profile']);
     const c = st['llmConfig'];
-    return JSON.stringify({ model: c.model, baseUrl: c.baseUrl, maxTokens: c.maxTokens, keyLen: (c.apiKey||'').length, mode: st['settings']?.mode });
+    return JSON.stringify({ model: c.model, baseUrl: c.baseUrl, maxTokens: c.maxTokens, keyLen: (c.apiKey||'').length, mode: st['settings']?.mode, profileDislikes: st['profile']?.dislikes ?? null });
   })()`);
   log('LLM 配置已注入: ' + injected);
   popupCdp.close();

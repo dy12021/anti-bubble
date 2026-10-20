@@ -159,7 +159,8 @@ describe('页面控制器', () => {
       send, settings: settings(), root: d,
     });
     await c.start();
-    expect((d.querySelector('.reply-item') as HTMLElement).style.display).toBe('none');
+    // 折叠是就地替换：原内容收起来，说明就地显示
+    expect((d.querySelector('.reply-content') as HTMLElement).style.display).toBe('none');
     expect(d.querySelector('[data-ab-prefix="ab-notice"]')?.textContent).toContain('在引战');
   });
 
@@ -187,7 +188,7 @@ describe('页面控制器', () => {
     const btn = d.querySelector('[data-ab-prefix="ab-revoke"]') as HTMLElement;
     btn.click();
     expect(onRevoke).toHaveBeenCalledWith('111');
-    expect((d.querySelector('.reply-item') as HTMLElement).style.display).not.toBe('none');
+    expect((d.querySelector('.reply-content') as HTMLElement).style.display).not.toBe('none');
   });
 
   it('后台抛错时静默降级，不影响页面', async () => {

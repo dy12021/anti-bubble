@@ -31,11 +31,25 @@ const verdict: Verdict = {
 };
 
 describe('折叠动作', () => {
-  it('折叠后内容不可见', () => {
+  /**
+   * 折叠是**就地替换**：卡片留在原位，内容换成「理由 + 仍要显示」。
+   *
+   * 早先把卡片 `display:none` 掉、再把说明插到它旁边——
+   * 说明就变成了网格里的另一个单元，整排卡片被挤歪。
+   */
+  it('折叠后原内容不可见', () => {
+    const d = fixture();
+    applyFold(d, '111', verdict, () => {});
+    const content = d.querySelector('.reply-content') as HTMLElement;
+    expect(content.style.display).toBe('none');
+  });
+
+  it('折叠后说明行在原位（不是插在旁边当新单元）', () => {
     const d = fixture();
     applyFold(d, '111', verdict, () => {});
     const el = d.querySelector('.reply-item') as HTMLElement;
-    expect(el.style.display).toBe('none');
+    const notice = d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-notice"]`);
+    expect(notice?.parentElement).toBe(el);
   });
 
   it('插入一条说明行', () => {
@@ -70,8 +84,8 @@ describe('折叠动作', () => {
     applyFold(d, '111', verdict, () => {});
     const btn = d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-revoke"]`) as HTMLElement;
     btn.click();
-    const el = d.querySelector('.reply-item') as HTMLElement;
-    expect(el.style.display).not.toBe('none');
+    const content = d.querySelector('.reply-content') as HTMLElement;
+    expect(content.style.display).not.toBe('none');
   });
 
   it('撤销后说明行被移除', () => {
@@ -101,8 +115,12 @@ describe('折叠动作', () => {
     const ok = applyFold(d, 'BV1xx411c7mD', { ...verdict, itemId: 'BV1xx411c7mD' }, () => {});
     expect(ok).toBe(true);
     const card = d.querySelector('.bili-video-card') as HTMLElement;
-    expect(card.style.display).toBe('none');
+    // 卡片留在原位，内容收起来，说明就地显示
+    expect(card.style.display).not.toBe('none');
+    const link = card.querySelector('a') as HTMLElement;
+    expect(link.style.display).toBe('none');
     expect(d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-notice"]`)?.textContent).toContain('在引战');
+    expect(d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-notice"]`)?.parentElement).toBe(card);
   });
 
   it('视频卡片被折叠后也能撤销', () => {
@@ -112,7 +130,8 @@ describe('折叠动作', () => {
     const btn = d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-revoke"]`) as HTMLElement;
     btn.click();
     expect(onRevoke).toHaveBeenCalledWith('BV1xx411c7mD');
-    expect((d.querySelector('.bili-video-card') as HTMLElement).style.display).not.toBe('none');
+    const link = d.querySelector('.bili-video-card a') as HTMLElement;
+    expect(link.style.display).not.toBe('none');
   });
 
   it('非法 id 不会拼进选择器，直接返回 false', () => {
@@ -124,6 +143,6 @@ describe('折叠动作', () => {
     const d = fixture();
     const body = d.body as HTMLElement;
     expect(applyFold(body, '111', verdict, () => {})).toBe(true);
-    expect((d.querySelector('.reply-item') as HTMLElement).style.display).toBe('none');
+    expect((d.querySelector('.reply-content') as HTMLElement).style.display).toBe('none');
   });
 });

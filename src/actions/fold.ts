@@ -14,18 +14,19 @@ export function injectStyles(root: ParentNode): void {
   style.setAttribute('data-ab-prefix', STYLE_ID);
   style.textContent = `
 .${CSS_PREFIX}-notice {
-  display: flex; align-items: center; gap: 8px;
-  padding: 4px 10px; margin: 2px 0;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  padding: 6px 10px; margin: 2px 0;
   font-size: 12px; line-height: 1.6;
   color: #61666d;
   background: rgba(0,0,0,.04);
   border-left: 2px solid #fb7299;
   border-radius: 2px;
 }
-.${CSS_PREFIX}-notice-reason { flex: 1; }
+.${CSS_PREFIX}-notice-reason { flex: 1 1 auto; min-width: 0; }
 .${CSS_PREFIX}-revoke {
   cursor: pointer; border: 0; background: transparent;
   color: #fb7299; font-size: 12px; padding: 0 2px;
+  margin-left: auto; flex: 0 0 auto;
 }
 .${CSS_PREFIX}-revoke:hover { text-decoration: underline; }
 .${CSS_PREFIX}-mark {
@@ -135,7 +136,11 @@ export function resolveTarget(root: ParentNode, itemId: string): Element | null 
 /**
  * 折叠一条内容，并插入「理由 + 仍要显示」。
  *
- * 点「仍要显示」→ 恢复可见 + 调用 onRevoke（上层写白名单）。
+ * **就地替换，不在旁边插一条**：把卡片藏掉、再把说明插到它旁边，
+ * 说明就变成了网格里的**另一个单元**——整排卡片会被挤歪、错位。
+ * 所以这里改成：卡片留在原来的位置，把它的内容换成「理由 + 仍要显示」。
+ *
+ * 点「仍要显示」→ 恢复原来的内容 + 调用 onRevoke（上层写白名单）。
  */
 export function applyFold(
   root: ParentNode,
@@ -150,11 +155,18 @@ export function applyFold(
   injectStyles(doc);
 
   const el = target as HTMLElement;
-  el.style.display = 'none';
 
   // 已经插过说明就不重复
   if (doc.querySelector(`[data-ab-prefix="${CSS_PREFIX}-notice"][data-item-id="${itemId}"]`)) {
     return true;
+  }
+
+  // 把原内容收起来（记住原样，撤销时要还原）
+  const hidden: HTMLElement[] = [];
+  for (const child of Array.from(el.children)) {
+    if (child.getAttribute('data-ab-prefix') === `${CSS_PREFIX}-notice`) continue;
+    hidden.push(child as HTMLElement);
+    (child as HTMLElement).style.display = 'none';
   }
 
   const notice = doc.createElement('div');
@@ -173,13 +185,13 @@ export function applyFold(
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    el.style.display = '';
+    for (const c of hidden) c.style.display = '';
     notice.remove();
     onRevoke(itemId);
   });
 
   notice.appendChild(reason);
   notice.appendChild(btn);
-  el.parentNode?.insertBefore(notice, el);
+  el.appendChild(notice);
   return true;
 }
