@@ -65,9 +65,9 @@ describe('折叠动作', () => {
     expect(notice?.textContent).toContain('在引战');
   });
 
-  it('找不到目标返回 false', () => {
+  it('找不到目标返回 null', () => {
     const d = fixture();
-    expect(applyFold(d, '999', verdict, () => {})).toBe(false);
+    expect(applyFold(d, '999', verdict, () => {})).toBeNull();
   });
 
   it('点「仍要显示」会调用撤销回调', () => {
@@ -113,7 +113,7 @@ describe('折叠动作', () => {
   it('视频卡片也能被折叠（靠链接里的 bvid 反查）', () => {
     const d = videoCardFixture();
     const ok = applyFold(d, 'BV1xx411c7mD', { ...verdict, itemId: 'BV1xx411c7mD' }, () => {});
-    expect(ok).toBe(true);
+    expect(ok).not.toBeNull();
     const card = d.querySelector('.bili-video-card') as HTMLElement;
     // 卡片留在原位，内容收起来，说明就地显示
     expect(card.style.display).not.toBe('none');
@@ -134,15 +134,15 @@ describe('折叠动作', () => {
     expect(link.style.display).not.toBe('none');
   });
 
-  it('非法 id 不会拼进选择器，直接返回 false', () => {
+  it('非法 id 不会拼进选择器，直接返回 null', () => {
     const d = fixture();
-    expect(applyFold(d, 'a"]b', verdict, () => {})).toBe(false);
+    expect(applyFold(d, 'a"]b', verdict, () => {})).toBeNull();
   });
 
   it('root 传元素（而不是 document）也能工作', () => {
     const d = fixture();
     const body = d.body as HTMLElement;
-    expect(applyFold(body, '111', verdict, () => {})).toBe(true);
+    expect(applyFold(body, '111', verdict, () => {})).not.toBeNull();
     expect((d.querySelector('.reply-content') as HTMLElement).style.display).toBe('none');
   });
 });

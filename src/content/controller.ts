@@ -4,6 +4,7 @@ import { buildListSubject, videoSubject } from '../pipeline/subject';
 import { getAdapter } from '../adapters';
 import type { Adapter } from '../adapters';
 import { applyFold } from '../actions/fold';
+import type { FoldHandle } from '../actions/fold';
 import { applyMark } from '../actions/mark';
 import { renderRecommendations } from '../actions/recommend';
 import type { RecommendItem } from '../actions/recommend';
@@ -41,6 +42,12 @@ export interface ControllerDeps {
 export class PageController {
   items: ContentItem[] = [];
   private stopped = false;
+  /** 总开关关掉后不再判定 */
+  private enabled = true;
+  /** 被折叠的内容（总开关关掉时一把恢复） */
+  private folded: FoldHandle[] = [];
+  /** 加了标识标签的内容 */
+  private marked: HTMLElement[] = [];
 
   /** 已经送出去判定过的内容 id。重新采集时只判新的。 */
   private readonly submitted = new Set<string>();
@@ -100,6 +107,28 @@ export class PageController {
   }
 
   /**
+   * 总开关：关掉就停手，并把已经折叠/标识的内容**全部恢复**。
+   *
+   * 「全局总开关，一键恢复所有屏蔽」是设计里的硬要求——
+   * 用户在面板里关掉插件时，页面上不该还留着被折掉的卡片。
+   *
+   * 恢复**不写白名单**：总开关是「暂停干预」，不是「放过这条」，
+   * 下次开回来还会重新判定。
+   */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.restoreAll();
+  }
+
+  /** 恢复所有被折叠/标识的内容。 */
+  restoreAll(): void {
+    for (const f of this.folded) f.restore();
+    this.folded = [];
+    for (const m of this.marked) m.remove();
+    this.marked = [];
+  }
+
+  /**
    * 渲染反向推荐区块。
    *
    * bg 通过 MSG.PUSH_RECOMMENDATIONS 把结果推过来时由 content script 调用。
@@ -130,6 +159,7 @@ export class PageController {
    */
   private async process(): Promise<void> {
     if (this.stopped) return;
+    if (!this.enabled) return;
     const root = this.root;
     const adapter = this.adapter;
     const settings = this.settings;
@@ -228,10 +258,16 @@ export class PageController {
         if (v.action === 'fold' || v.action === 'hide') {
           // hide 与 fold 走同一条路径：都藏起来 + 给理由 + 给撤销。
           // 「可撤销」是铁律，隐藏类动作不能没有出口。
-          applyFold(root, v.itemId, v, (id) => this.deps.onRevoke?.(id));
+          const handle = applyFold(root, v.itemId, v, (id) => this.deps.onRevoke?.(id));
+          // 记下撤销把手：总开关关掉时要把所有折叠过的内容一把恢复
+          if (handle) this.folded.push(handle);
         } else if (v.action === 'mark') {
           // 标识同样可撤销：点标签就撤掉 + 写白名单。
           applyMark(root, v.itemId, v, (id) => this.deps.onRevoke?.(id));
+          const mark = root.querySelector(
+            `[data-ab-prefix="ab-mark"][data-item-id="${v.itemId}"]`,
+          );
+          if (mark) this.marked.push(mark as HTMLElement);
         }
       } catch {
         // 单条失败不影响其它

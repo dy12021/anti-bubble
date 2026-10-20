@@ -191,6 +191,63 @@ describe('页面控制器', () => {
     expect((d.querySelector('.reply-content') as HTMLElement).style.display).not.toBe('none');
   });
 
+  /**
+   * 设计要求：「全局总开关，一键恢复所有屏蔽」。
+   * 用户关掉插件时，页面上不该还留着被折掉的卡片。
+   */
+  it('总开关关掉后，被折叠的内容全部恢复', async () => {
+    const d = commentDom();
+    const send = vi.fn(async () => ({ ok: true, data: { verdicts: [FOLD] } }));
+    const c = new PageController({
+      url: 'https://www.bilibili.com/video/BV1xx',
+      send, settings: settings(), root: d,
+    });
+    await c.start();
+    expect((d.querySelector('.reply-content') as HTMLElement).style.display).toBe('none');
+
+    c.setEnabled(false);
+    expect((d.querySelector('.reply-content') as HTMLElement).style.display).not.toBe('none');
+    expect(d.querySelector('[data-ab-prefix="ab-notice"]')).toBeNull();
+  });
+
+  it('总开关关掉后不再判定新内容', async () => {
+    const dom = searchDom();
+    const send = vi.fn(async () => ({ ok: true, data: { verdicts: [] } }));
+    const c = new PageController({
+      url: 'https://search.bilibili.com/all?keyword=x',
+      send, settings: settings(), root: dom,
+    });
+    await c.start();
+    const before = send.mock.calls.length;
+    c.setEnabled(false);
+    // 触发一次重新采集（新增一张卡片）
+    const card = dom.createElement('div');
+    card.className = 'bili-video-card';
+    card.innerHTML = '<a href="/video/BV1yy411c7mD"><h3 class="bili-video-card__info--tit">新卡片</h3></a>';
+    dom.body.appendChild(card);
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(send.mock.calls.length).toBe(before);
+  });
+
+  it('总开关恢复后重新判定', async () => {
+    const dom = searchDom();
+    const send = vi.fn(async () => ({ ok: true, data: { verdicts: [] } }));
+    const c = new PageController({
+      url: 'https://search.bilibili.com/all?keyword=x',
+      send, settings: settings(), root: dom,
+    });
+    await c.start();
+    c.setEnabled(false);
+    c.setEnabled(true);
+    const before = send.mock.calls.length;
+    const card = dom.createElement('div');
+    card.className = 'bili-video-card';
+    card.innerHTML = '<a href="/video/BV1zz411c7mD"><h3 class="bili-video-card__info--tit">新卡片</h3></a>';
+    dom.body.appendChild(card);
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(send.mock.calls.length).toBeGreaterThan(before);
+  });
+
   it('后台抛错时静默降级，不影响页面', async () => {
     const d = commentDom();
     const send = vi.fn(async () => { throw new Error('boom'); });

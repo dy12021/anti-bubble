@@ -6,8 +6,11 @@ import { recallOpposite } from '../recommend/recall';
 import { CommentPanel } from './comment-panel';
 import type { RecommendItem } from '../actions/recommend';
 import { resolveRecommendationAnchor, renderNoOpposition } from '../actions/recommend';
+import { resolveSearchAnchor, renderRecommendations } from '../actions/recommend';
 import { PageController } from './controller';
+import { detectPageType } from './page';
 import { WatchTracker, videoProgressSeconds } from './watch';
+import { fetchSearchOppositeRecommendations } from './search-recommend';
 import { videoSubject } from '../pipeline/subject';
 import { MSG } from '../shared/messages';
 import type { Settings, ContentItem } from '../shared/types';
@@ -370,19 +373,18 @@ async function mountCommentPanel(
   video: VideoContext,
   settings: Settings | null,
   send: (msg: unknown) => Promise<unknown>,
-  ctrl: PageController,
-): Promise<void> {
-  if (!settings || !settings.enabledPages['video']) return;
+): Promise<CommentPanel | null> {
+  if (!settings || !settings.enabledPages['video']) return null;
   // aid 已经在 loadVideoContext 里从 view 接口拿到了，不必再打一次
   const aid = video.aid;
-  if (typeof aid !== 'number') return;
+  if (typeof aid !== 'number') return null;
 
   const anchor =
     document.getElementById('commentapp') ??
     document.querySelector('.bili-video-info-container') ??
     document.querySelector('#viewbox_report') ??
     document.body?.firstElementChild;
-  if (!anchor) return;
+  if (!anchor) return null;
 
   const panel = new CommentPanel({
     root: document,
@@ -397,7 +399,7 @@ async function mountCommentPanel(
     },
   });
   panel.mount(anchor);
-  void ctrl;
+  return panel;
 }
 
 async function main(): Promise<void> {
@@ -426,12 +428,49 @@ async function main(): Promise<void> {
     },
   });
 
-  await ctrl.start();
+  // start() 的同步部分已经把卡片收集好了（items 在发判定请求前就填上了），
+  // 所以这里不 await：让「搜索页反向推荐」和「内容判定」并行跑，
+  // 不用等一次 LLM 判定结束才开始下一次。
+  const started = ctrl.start();
+
+  // 搜索页的反向推荐（设计 §3.4 的第二个触发点）。
+  //
+  // 对搜索结果里最靠前的几个视频做立场判定，命中「表达观点」的才给相反观点。
+  if (detectPageType(location.href) === 'search') {
+    void fetchSearchOppositeRecommendations(ctrl.items, settings, { bili, send }).then(
+      (items) => {
+        if (items.length === 0) return;
+        const anchor = resolveSearchAnchor(document);
+        // 插在结果列表**上面**（不进网格，否则会挤歪整排卡片）
+        if (anchor) renderRecommendations(document, anchor, items, { position: 'before' });
+      },
+    );
+  }
+
+  await started;
 
   // 视频页：原生评论区在 closed shadow root 里读不到，
   // 改用 API 取评论 + 自渲染面板（见 comment-panel.ts 的说明）。
-  if (video) {
-    void mountCommentPanel(video, settings, send, ctrl);
+  const panel = video ? await mountCommentPanel(video, settings, send) : null;
+
+  // **全局总开关：关掉就停手，并把已经屏蔽/标识的内容全部恢复。**
+  //
+  // 设计要求是「全局总开关，一键恢复所有屏蔽」——
+  // 用户在面板里关掉插件时，页面上不该还留着被折掉的卡片。
+  // 恢复**不写白名单**：总开关是「暂停干预」，不是「放过这条」。
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      const ch = changes['settings'];
+      if (!ch) return;
+      const next = ch.newValue as Settings | undefined;
+      const on = next ? next.masterEnabled !== false : true;
+      ctrl.setEnabled(on);
+      panel?.setEnabled(on);
+      console.info(`[anti-bubble] 总开关已${on ? '开启' : '关闭'}`);
+    });
+  } catch {
+    // 某些环境没有 storage.onChanged（不影响主流程）
   }
 
   // 反向推荐：**看够一段时间才推**。

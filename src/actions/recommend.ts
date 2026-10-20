@@ -43,6 +43,7 @@ export function renderRecommendations(
   root: ParentNode,
   anchor: Element,
   items: RecommendItem[],
+  opts: { position?: 'after' | 'before' } = {},
 ): boolean {
   if (!items.length) return false;
   const doc = ownerDoc(root);
@@ -77,8 +78,29 @@ export function renderRecommendations(
     box.appendChild(row);
   }
 
-  anchor.parentNode?.insertBefore(box, anchor.nextSibling);
+  const parent = anchor.parentNode;
+  if (!parent) return false;
+  if (opts.position === 'before') {
+    parent.insertBefore(box, anchor);
+  } else {
+    parent.insertBefore(box, anchor.nextSibling);
+  }
   return true;
+}
+
+/**
+ * 搜索页的插入点：结果列表**上面**。
+ *
+ * 插在列表**里面**会变成网格里的另一个单元，把整排卡片挤歪——
+ * 和折叠说明踩的是同一个坑。所以这里插在结果列表的前面，
+ * 作为它所在容器的兄弟节点（整宽，不进网格）。
+ */
+export function resolveSearchAnchor(root: ParentNode): Element | null {
+  const doc = ownerDoc(root);
+  const list = doc.querySelector('.video-list.row') ?? doc.querySelector('.video-list');
+  if (list) return list;
+  const wrap = doc.querySelector('.video.i_wrapper.search-all-list');
+  return wrap ?? null;
 }
 
 /**

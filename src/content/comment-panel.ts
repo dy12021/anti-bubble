@@ -62,6 +62,12 @@ export class CommentPanel {
   private loading = false;
   /** 已判定过的评论 id，避免重复判定 */
   private judged = new Set<string>();
+  /** 被折叠的评论（总开关关掉时一把恢复） */
+  private folded: Array<{ row: HTMLElement; notice: HTMLElement }> = [];
+  /** 加了标识标签的评论 */
+  private marked: HTMLElement[] = [];
+  /** 总开关关掉后不再判定 */
+  private enabled = true;
 
   constructor(private readonly opts: CommentPanelOptions) {}
 
@@ -132,6 +138,20 @@ export class CommentPanel {
   unmount(): void {
     this.container?.remove();
     this.container = null;
+  }
+
+  /**
+   * 总开关：关掉就停手，并把已经屏蔽/标识的内容**全部恢复**。
+   *
+   * 「一键恢复所有屏蔽」是设计里的硬要求——
+   * 用户关掉插件时，页面上不该还留着被折掉的卡片。
+   *
+   * 恢复**不写白名单**：总开关是「暂停干预」，不是「放过这条」，
+   * 下次开回来还会重新判定。
+   */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) this.restoreAll();
   }
 
   private ownerDoc(): Document {
@@ -230,6 +250,7 @@ export class CommentPanel {
 
   /** 把这批评论送去判定，然后按判定结果改 DOM。 */
   private async judge(items: CommentItem[]): Promise<void> {
+    if (!this.enabled) return;
     const fresh = items.filter((c) => !this.judged.has(String(c.rpid)));
     if (fresh.length === 0) return;
     for (const c of fresh) this.judged.add(String(c.rpid));
@@ -326,12 +347,32 @@ export class CommentPanel {
       e.stopPropagation();
       row.style.display = '';
       notice.remove();
+      this.folded = this.folded.filter((f) => f.notice !== notice);
       this.opts.onRevoke?.(v.itemId);
       this.updateCount();
     });
     notice.appendChild(btn);
 
     row.parentNode?.insertBefore(notice, row);
+    // 记下来，总开关关掉时能一把全撤回来
+    this.folded.push({ row, notice });
+  }
+
+  /**
+   * 恢复所有被折叠/标识的内容。
+   *
+   * 总开关关掉时调用：这是「暂停干预」，不是「放过这条」——
+   * 所以**不写白名单**，下次开回来还会重新判定。
+   */
+  restoreAll(): void {
+    for (const f of this.folded) {
+      f.row.style.display = '';
+      f.notice.remove();
+    }
+    this.folded = [];
+    for (const m of this.marked) m.remove();
+    this.marked = [];
+    this.updateCount();
   }
 
   private applyMark(row: HTMLElement, v: Verdict): void {
@@ -360,6 +401,7 @@ export class CommentPanel {
     });
 
     row.querySelector(`.${CSS_PREFIX}-comment-text`)?.appendChild(mark);
+    this.marked.push(mark);
   }
 
   private updateCount(): void {

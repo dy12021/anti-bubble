@@ -134,6 +134,19 @@ export function resolveTarget(root: ParentNode, itemId: string): Element | null 
 }
 
 /**
+ * 折叠的结果。
+ *
+ * 返回「怎么撤销」而不是一个布尔值——
+ * 总开关关掉时要把**所有**折叠过的内容一把恢复，
+ * 控制器得留着这个把手才能做（`restore()` 只恢复显示，不写白名单：
+ * 总开关是「暂停干预」，不是「放过这条」）。
+ */
+export interface FoldHandle {
+  /** 恢复这条内容的显示（不动白名单）。 */
+  restore(): void;
+}
+
+/**
  * 折叠一条内容，并插入「理由 + 仍要显示」。
  *
  * **就地替换，不在旁边插一条**：把卡片藏掉、再把说明插到它旁边，
@@ -147,10 +160,10 @@ export function applyFold(
   itemId: string,
   verdict: Verdict,
   onRevoke: (id: string) => void,
-): boolean {
+): FoldHandle | null {
   const doc = ownerDoc(root);
   const target = resolveTarget(doc, itemId);
-  if (!target) return false;
+  if (!target) return null;
 
   injectStyles(doc);
 
@@ -158,7 +171,7 @@ export function applyFold(
 
   // 已经插过说明就不重复
   if (doc.querySelector(`[data-ab-prefix="${CSS_PREFIX}-notice"][data-item-id="${itemId}"]`)) {
-    return true;
+    return null;
   }
 
   // 把原内容收起来（记住原样，撤销时要还原）
@@ -178,6 +191,11 @@ export function applyFold(
   reason.className = `${CSS_PREFIX}-notice-reason`;
   reason.textContent = `已屏蔽（${verdict.reason || '未说明原因'}）`;
 
+  const restore = (): void => {
+    for (const c of hidden) c.style.display = '';
+    notice.remove();
+  };
+
   const btn = doc.createElement('button');
   btn.className = `${CSS_PREFIX}-revoke`;
   btn.setAttribute('data-ab-prefix', `${CSS_PREFIX}-revoke`);
@@ -185,13 +203,12 @@ export function applyFold(
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    for (const c of hidden) c.style.display = '';
-    notice.remove();
+    restore();
     onRevoke(itemId);
   });
 
   notice.appendChild(reason);
   notice.appendChild(btn);
   el.appendChild(notice);
-  return true;
+  return { restore };
 }
