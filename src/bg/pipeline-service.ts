@@ -3,7 +3,8 @@ import type { LlmClient } from './llm/client';
 import { Pipeline } from '../pipeline/pipeline';
 import { WordlistService } from '../pipeline/wordlist-service';
 import { VerdictCache, verdictContextKey } from '../pipeline/verdict-cache';
-import { getProfile, getWhitelist } from './storage';
+import { getWhitelist } from './storage';
+import { ProfileService } from './profile-service';
 import type { Subject, Wordlist, PipelineContext } from '../pipeline/types';
 
 /**
@@ -22,7 +23,10 @@ export class PipelineService {
     items: ContentItem[],
     opts: { mode: Mode; subject: Subject | null; threshold: number },
   ): Promise<Verdict[]> {
-    const profile: UserProfile | null = await getProfile();
+    // 画像用「懒刷新」：没有就归纳，过期（>24h）就重新归纳。
+    // 早先这里直接 getProfile()，画像**用多久都不会更新**——
+    // PROFILE_MAX_AGE_MS 那个 24 小时过期机制在生产路径上从没生效过。
+    const profile: UserProfile | null = await new ProfileService(this.client).getOrRefresh();
     const whitelist = await getWhitelist();
 
     const pipeline = new Pipeline({

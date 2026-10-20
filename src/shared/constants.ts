@@ -12,6 +12,8 @@ export const STORAGE_KEYS = {
   blockedLog: 'blockedLog',
   /** 最近一次失败（人话）。用户要能看见「为什么什么都没发生」。 */
   lastError: 'lastError',
+  /** 上次尝试重归纳画像的时间。失败后 1 小时内不再重试。 */
+  profileRefreshAt: 'profileRefreshAt',
 } as const;
 
 export const VERDICT_ACTIONS = ['pass', 'fold', 'hide', 'mark', 'recommend'] as const;

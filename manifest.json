@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "用 LLM 分析你的 B 站偏好，主动收紧或主动打破你的信息茧房。",
   "minimum_chrome_version": "116",
-  "permissions": ["storage", "alarms", "scripting"],
+  "permissions": ["storage"],
   "host_permissions": ["https://*.bilibili.com/*"],
   "web_accessible_resources": [
     {

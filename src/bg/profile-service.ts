@@ -10,6 +10,14 @@ import { toSample } from '../profile/collect';
 /** 画像最长有效期：24 小时后自动重新归纳。 */
 export const PROFILE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * 重归纳失败后的冷却时间：1 小时内不再重试。
+ *
+ * 没有它的话，LLM 挂掉时**每次判定**都会去试着重归纳，
+ * 而每次都要等 LLM 超时（120 秒）——页面判定会被拖死。
+ */
+export const PROFILE_RETRY_INTERVAL_MS = 60 * 60 * 1000;
+
 /** 累计观看多少秒才记一条样本。过滤误点即退。 */
 export const WATCH_SAMPLE = WATCH_SAMPLE_SECONDS;
 
@@ -21,7 +29,7 @@ const MAX_WATCH_LOG = 1000;
  *
  * 负责三件事：
  * 1. 提供当前画像
- * 2. 定期/按需重新归纳（用已存的样本 + LLM 归纳）
+ * 2. 按需/自动重新归纳（用已存的样本 + LLM 归纳）
  * 3. 记录增量观看
  *
  * 样本来源说明：归纳用的样本来自 `STORAGE_KEYS.watchLog`
@@ -46,17 +54,58 @@ export class ProfileService {
   ): Promise<UserProfile> {
     const llm = client ?? this.client;
     const existing = await getProfile();
-    if (existing && !opts.force) {
-      const age = this.now() - Date.parse(existing.updatedAt);
-      if (Number.isFinite(age) && age < PROFILE_MAX_AGE_MS) {
-        return existing;
-      }
+    if (existing && !opts.force && this.isFresh(existing)) {
+      return existing;
     }
 
     const samples = await this.getSamples();
     const profile = await induceProfile(llm, samples, this.now());
     await saveProfile(profile);
     return profile;
+  }
+
+  /**
+   * 取「当前该用的」画像：**没有就归纳，过期了就重新归纳**。
+   *
+   * 与 {@link refresh} 的区别：
+   * - `refresh` 是**用户显式触发**的（面板上的「重新归纳」），无脑重算；
+   * - 这个是**判定路径上自动**的：只在「没有画像」或「画像过期」时才动。
+   *
+   * 为什么用「懒刷新」而不是定时任务（`chrome.alarms`）：
+   * ① 定时唤醒后台去归纳，用户没在浏览时纯属白花钱；
+   * ② MV3 的 service worker 随时被挂起，alarms 还要额外处理重注册；
+   * ③ **少一个权限**，商店审核时权限越少越好。
+   *
+   * 两条护栏：
+   * - **没有样本就不调 LLM**（自动路径不该花钱去问一个空画像）；
+   * - **失败后一小时内不再重试**，否则 LLM 挂掉时每次判定都要等它超时。
+   */
+  async getOrRefresh(client?: LlmClient): Promise<UserProfile | null> {
+    const existing = await getProfile();
+    if (existing && this.isFresh(existing)) return existing;
+
+    // 上次尝试重归纳失败过？先别再试（LLM 可能正挂着）
+    const lastAttempt = await getJson<number>(STORAGE_KEYS.profileRefreshAt, 0);
+    if (lastAttempt && this.now() - lastAttempt < PROFILE_RETRY_INTERVAL_MS) {
+      return existing;
+    }
+
+    const samples = await this.getSamples();
+    // 没样本可归纳：保留旧画像（哪怕过期）总比没有强
+    if (samples.length === 0) return existing;
+
+    await setJson(STORAGE_KEYS.profileRefreshAt, this.now());
+    const llm = client ?? this.client;
+    // 归纳失败时保留旧画像，别用粗粒度的规则画像把它顶掉
+    const profile = await induceProfile(llm, samples, this.now(), existing);
+    await saveProfile(profile);
+    return profile;
+  }
+
+  /** 画像是否还在有效期内。 */
+  private isFresh(p: UserProfile): boolean {
+    const age = this.now() - Date.parse(p.updatedAt);
+    return Number.isFinite(age) && age < PROFILE_MAX_AGE_MS;
   }
 
   /** 记录一次观看。不足阈值则忽略。 */

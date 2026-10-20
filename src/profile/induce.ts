@@ -105,11 +105,16 @@ export function parseProfile(raw: string, fallback: UserProfile): UserProfile {
  * 空样本直接跳过 LLM 会让「点了没反应」与「没配 Key」无法区分；
  * 提示词里已经写明「不要编造样本里没有的偏好」，
  * 模型在没有样本时给空画像是预期行为。
+ *
+ * `onFailure`：归纳失败时用这个兜底（不传则用规则画像）。
+ * 自动重归纳路径要传旧的画像——归纳失败不该用粗粒度的规则画像
+ * 把之前的归纳成果顶掉。
  */
 export async function induceProfile(
   client: LlmClient,
   samples: UserProfileInput[],
   now: number = Date.now(),
+  onFailure?: UserProfile | null,
 ): Promise<UserProfile> {
   const fallback = buildRuleProfile(samples, now);
 
@@ -119,6 +124,6 @@ export async function induceProfile(
     return parseProfile(raw, fallback);
   } catch {
     // 降级：规则画像
-    return fallback;
+    return onFailure ?? fallback;
   }
 }
