@@ -42,7 +42,7 @@ tests/
 
 ---
 
-## Task 1: WBI 签名
+### Task 1: WBI 签名
 
 **Files:**
 - Create: `src/bili/types.ts`
@@ -435,7 +435,7 @@ git commit -m "feat: 实现 WBI 签名与同步 MD5"
 
 ---
 
-## Task 2: 请求执行器（限速 + 退避 + 错误分类）
+### Task 2: 请求执行器（限速 + 退避 + 错误分类）
 
 **Files:**
 - Create: `src/bili/client.ts`
@@ -572,12 +572,9 @@ Expected: FAIL，`Cannot find module '../../src/bili/client'`
 `src/bili/client.ts`：
 ```ts
 import { extractKey, mixinKey, signParams, encodeQuery } from './wbi';
+import type { BiliEnvelope } from './types';
 
-export interface BiliEnvelope<T> {
-  code: number;
-  message: string;
-  data: T;
-}
+export type { BiliEnvelope } from './types';
 
 export class BiliError extends Error {
   constructor(message: string, readonly code: number) {
@@ -637,19 +634,22 @@ export class BiliClient {
   /**
    * 游标翻页。B 站评论/历史接口用 next 游标而非页号。
    * 单页失败即停止，返回已拿到的部分（不抛）。
+   *
+   * 两个泛型：P 是页面对象（如 { list, page }），I 是页面里的条目类型。
+   * pick 把页面对象映射成条目数组。
    */
-  async getPaged<T>(
+  async getPaged<P, I>(
     path: string,
     params: Record<string, string | number>,
-    pick: (data: T) => T[],
+    pick: (data: P) => I[],
     maxPages = 20,
-  ): Promise<T[]> {
-    const out: T[] = [];
+  ): Promise<I[]> {
+    const out: I[] = [];
     let cursor: string | undefined;
     for (let i = 0; i < maxPages; i++) {
       const p: Record<string, string | number> = { ...params };
       if (cursor) p['cursor'] = cursor;
-      const data = await this.getSigned<T>(path, p);
+      const data = await this.getSigned<P>(path, p);
       if (!data) break;
       const items = pick(data);
       if (items.length === 0) break;
@@ -733,7 +733,7 @@ git commit -m "feat: 新增 B 站请求执行器（限速、退避、错误降�
 
 ---
 
-## Task 3: 页面上下文请求桥
+### Task 3: 页面上下文请求桥
 
 **Files:**
 - Create: `src/content/page-bridge.ts`
@@ -1004,7 +1004,7 @@ git commit -m "feat: 新增页面上下文请求桥以自动携带登录态"
 
 ---
 
-## Task 4: 具体端点封装
+### Task 4: 具体端点封装
 
 **Files:**
 - Create: `src/bili/api.ts`
@@ -1156,10 +1156,10 @@ export async function fetchNav(c: BiliClient): Promise<NavData | null> {
 
 /** 观看历史。仅最近 ~1000 条 / 3 个月。 */
 export async function fetchHistory(c: BiliClient, maxItems = 1000): Promise<HistoryItem[]> {
-  const items = await c.getPaged<{
-    list: HistoryItem[];
-    page: { has_more?: boolean; cursor?: string };
-  }>('/x/v2/history/cursor', { type: 'all' }, (d) => d.list ?? []);
+  const items = await c.getPaged<
+    { list: HistoryItem[]; page: { has_more?: boolean; cursor?: string } },
+    HistoryItem
+  >('/x/v2/history/cursor', { type: 'all' }, (d) => d.list ?? []);
   return items.slice(0, maxItems);
 }
 
@@ -1242,10 +1242,10 @@ export async function fetchComments(
 ): Promise<CommentItem[]> {
   const params: Record<string, string | number> = { type: 1, oid, mode, ps: 20 };
   if (parent !== undefined) params['root'] = parent;
-  const items = await c.getPaged<{
-    replies?: CommentItem[];
-    page?: { has_more?: boolean; cursor?: string };
-  }>('/x/v2/reply/wbi/main', params, (d) => d.replies ?? []);
+  const items = await c.getPaged<
+    { replies?: CommentItem[]; page?: { has_more?: boolean; cursor?: string } },
+    CommentItem
+  >('/x/v2/reply/wbi/main', params, (d) => d.replies ?? []);
   return items;
 }
 ```
@@ -1269,7 +1269,7 @@ git commit -m "feat: 封装 B 站历史/收藏/关注/视频/搜索/评论端点
 
 ---
 
-## Task 5: 端到端自检
+### Task 5: 端到端自检
 
 **Files:**
 - Create: `docs/testing-checklist.md`（追加本计划章节）

@@ -60,7 +60,7 @@ anti-bubble/
 
 ---
 
-## Task 1: 工程脚手架与构建管线
+### Task 1: 工程脚手架与构建管线
 
 **Files:**
 - Create: `package.json`
@@ -315,7 +315,7 @@ git commit -m "chore: 搭建 MV3 扩展脚手架与构建管线"
 
 ---
 
-## Task 2: 核心类型契约
+### Task 2: 核心类型契约
 
 **Files:**
 - Create: `src/shared/types.ts`
@@ -527,7 +527,7 @@ git commit -m "feat: 定义核心类型契约与常量表"
 
 ---
 
-## Task 3: 内容寻址哈希
+### Task 3: 内容寻址哈希
 
 **Files:**
 - Create: `src/shared/hash.ts`
@@ -639,7 +639,7 @@ git commit -m "feat: 新增内容寻址哈希用于缓存键"
 
 ---
 
-## Task 4: 消息协议
+### Task 4: 消息协议
 
 **Files:**
 - Create: `src/shared/messages.ts`
@@ -824,7 +824,7 @@ git commit -m "feat: 定义跨上下文消息协议与运行时校验"
 
 ---
 
-## Task 5: 存储层
+### Task 5: 存储层
 
 **Files:**
 - Create: `src/bg/storage.ts`
@@ -1043,7 +1043,7 @@ git commit -m "feat: 新增本地存储层与设置读写"
 
 ---
 
-## Task 6: LLM 客户端抽象
+### Task 6: LLM 客户端抽象
 
 **Files:**
 - Create: `src/bg/llm/client.ts`
@@ -1337,7 +1337,7 @@ git commit -m "feat: 新增 LLM 客户端抽象与 OpenAI/Anthropic 双协议实
 
 ---
 
-## Task 7: service worker 消息路由
+### Task 7: service worker 消息路由
 
 **Files:**
 - Modify: `src/bg/index.ts`
@@ -1554,7 +1554,7 @@ git commit -m "feat: 新增 service worker 消息路由与设置/配置接口"
 
 ---
 
-## Task 8: 页面类型识别
+### Task 8: 页面类型识别
 
 **Files:**
 - Create: `src/content/page.ts`
@@ -1658,7 +1658,7 @@ git commit -m "feat: 新增 B 站页面类型识别"
 
 ---
 
-## Task 9: 端到端自检与 README
+### Task 9: 端到端自检与 README
 
 **Files:**
 - Create: `README.md`

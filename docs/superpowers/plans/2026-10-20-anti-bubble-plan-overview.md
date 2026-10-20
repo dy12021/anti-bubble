@@ -30,6 +30,41 @@
 
 ---
 
+## ⚠️ 规划期实测发现的问题（照抄计划前必读）
+
+这几个坑是**写计划时真的写错了**，已修正到各计划里，但值得单独列出：
+
+1. **MD5 手写位运算会静默出错**（计划 02 Task 1）
+   JS 的 `<<` 是有符号 32 位运算，`0x80 << 24` 溢出成负数。
+   症状：**只有全零输入（空串）能过**，`'abc'` 全错——只测空串会以为是对的。
+   修法：用 `DataView.getUint32(offset, true)` 读小端。
+   **任何自实现的哈希/编码，测试向量必须含非零字节。**
+
+2. **CRXJS 的图标路径**（计划 01 Task 1）
+   `public/` 的内容会被摊到 `dist/` 根，但 manifest 里的路径**不会**跟着改。
+   写 `public/icon-16.png` 构建不报错、运行时 Chrome 找不到图标。
+   正确写法：`icon-16.png`。
+
+3. **`getPaged` 需要两个泛型**（计划 02 Task 2）
+   写成 `getPaged<T>(..., pick: (data: T) => T[])` 会让 `pick` 的返回类型与页面对象类型冲突，
+   TS 直接报错。正确：`getPaged<P, I>(..., pick: (data: P) => I[])`——
+   P 是页面对象（`{ list, page }`），I 是条目类型。
+
+4. **`verbatimModuleSyntax` 下重导出类型要用 `export type`**（计划 02 Task 2）
+   `export { BiliEnvelope } from './types'` 会报 TS1205。
+
+5. **PowerShell 读 UTF-8 文件会显示乱码**（Windows）
+   `Get-Content -Raw` 不加 `-Encoding UTF8` 会按 cp936 解码，**看起来乱码但文件本身是好的**。
+   确认真实编码用 `[System.IO.File]::ReadAllBytes()` + `[System.Text.Encoding]::UTF8.GetString()`。
+   写入代码文件时用 `.NET` 的 `WriteAllText(path, text, UTF8Encoding($false))`（无 BOM）。
+
+6. **独立脚本跑 TS** 用 `node --experimental-strip-types script.ts`（**必须 .ts 后缀**）。
+   `npx vite-node` 会加载 `vite.config.ts` 导致 CRXJS 插件在非 build 模式崩溃。
+
+7. **删除文件走 `mavis-trash`**，不要用 `Remove-Item`（安全策略会拦永久删除）。
+
+---
+
 ## Global Constraints
 
 以下约束适用于**所有**计划，任何任务都隐含包含本节：
