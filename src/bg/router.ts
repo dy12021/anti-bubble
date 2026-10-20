@@ -9,7 +9,7 @@ import { STORAGE_KEYS } from '../shared/constants';
 import { createLlmClient } from './llm/client';
 import { ProfileService } from './profile-service';
 import { PipelineService } from './pipeline-service';
-import { WordlistService } from './pipeline/wordlist-service';
+import { WordlistService } from '../pipeline/wordlist-service';
 import type { VideoContext } from '../pipeline/types';
 
 /**
