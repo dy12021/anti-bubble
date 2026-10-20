@@ -1,0 +1,23 @@
+{
+  "name": "anti-bubble",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "（反）信息茧房：B 站信息摄入干预插件",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.21",
+    "@types/chrome": "0.0.266",
+    "jsdom": "25.0.1",
+    "typescript": "5.5.2",
+    "vite": "5.4.1",
+    "vitest": "2.1.1"
+  }
+}
