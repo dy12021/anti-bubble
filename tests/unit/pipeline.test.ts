@@ -72,7 +72,7 @@ describe('判定流水线', () => {
     const c = client(WORDLIST_JSON);
     const p = new Pipeline({ client: c, wordlistProvider: provider(c) });
     const vs = await p.judge([item({ text: '今天天气不错' })], {
-      mode: 'cocoon', profile, video: null, threshold: 0.7,
+      mode: 'cocoon', profile, subject: null, threshold: 0.7,
     });
     expect(vs[0]!.action).toBe('pass');
     // 只有词表那一次调用，没有精判调用
@@ -85,7 +85,7 @@ describe('判定流水线', () => {
     }));
     const p = new Pipeline({ client: c, wordlistProvider: provider(c) });
     const vs = await p.judge([item({ text: '这就是引战' })], {
-      mode: 'cocoon', profile, video: null, threshold: 0.7,
+      mode: 'cocoon', profile, subject: null, threshold: 0.7,
     });
     expect(vs[0]!.action).toBe('hide');
     expect(vs[0]!.reason).toBe('在引战');
@@ -95,7 +95,7 @@ describe('判定流水线', () => {
     const c = client(WORDLIST_JSON);
     const p = new Pipeline({ client: c, wordlistProvider: provider(c) });
     const vs = await p.judge([item({ text: '游戏实况真好看' })], {
-      mode: 'cocoon', profile, video: null, threshold: 0.7,
+      mode: 'cocoon', profile, subject: null, threshold: 0.7,
     });
     expect(vs[0]!.action).toBe('fold');
     expect((c.complete as ReturnType<typeof vi.fn>).mock.calls.length).toBe(1);
@@ -107,7 +107,7 @@ describe('判定流水线', () => {
       wordlistProvider: async () => { throw new Error('挂了'); },
     });
     const vs = await p.judge([item({ text: '引战' })], {
-      mode: 'cocoon', profile, video: null, threshold: 0.7,
+      mode: 'cocoon', profile, subject: null, threshold: 0.7,
     });
     expect(vs[0]!.action).toBe('pass');
   });
@@ -116,14 +116,14 @@ describe('判定流水线', () => {
     const p = new Pipeline({ client: client(WORDLIST_JSON), wordlistProvider: async () => ({
       patterns: [], stance: '', oppositeKeywords: [], cacheKey: 'k',
     }) });
-    expect(await p.judge([], { mode: 'cocoon', profile, video: null, threshold: 0.7 })).toEqual([]);
+    expect(await p.judge([], { mode: 'cocoon', profile, subject: null, threshold: 0.7 })).toEqual([]);
   });
 
   it('结果数量与输入一致', async () => {
     const c = client(WORDLIST_JSON);
     const p = new Pipeline({ client: c, wordlistProvider: provider(c) });
     const items = [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' })];
-    const vs = await p.judge(items, { mode: 'cocoon', profile, video: null, threshold: 0.7 });
+    const vs = await p.judge(items, { mode: 'cocoon', profile, subject: null, threshold: 0.7 });
     expect(vs).toHaveLength(3);
     expect(vs.map((v) => v.itemId)).toEqual(['a', 'b', 'c']);
   });
@@ -136,7 +136,7 @@ describe('判定流水线', () => {
       whitelist: ['c1'],
     });
     const vs = await p.judge([item({ id: 'c1', text: '引战' })], {
-      mode: 'cocoon', profile, video: null, threshold: 0.7,
+      mode: 'cocoon', profile, subject: null, threshold: 0.7,
     });
     expect(vs[0]!.action).toBe('pass');
   });
@@ -147,7 +147,7 @@ describe('判定流水线', () => {
     }));
     const p = new Pipeline({ client: c, wordlistProvider: provider(c) });
     const vs = await p.judge([item({ text: '引战' })], {
-      mode: 'cocoon', profile, video: null, threshold: 0.7,
+      mode: 'cocoon', profile, subject: null, threshold: 0.7,
     });
     expect(vs.filter((v) => v.action !== 'pass').every((v) => v.reason.length > 0)).toBe(true);
   });
@@ -161,7 +161,7 @@ describe('判定流水线', () => {
       wordlistProvider: async () => WL,
     });
     await p.judge([item({ text: '今天天气不错' })], {
-      mode: 'cocoon', profile, video: null, threshold: 0.7,
+      mode: 'cocoon', profile, subject: null, threshold: 0.7,
     });
     expect((c.complete as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
   });

@@ -6,6 +6,7 @@ import { recallOpposite } from '../recommend/recall';
 import { CommentPanel } from './comment-panel';
 import type { RecommendItem } from '../actions/recommend';
 import { PageController } from './controller';
+import { videoSubject } from '../pipeline/subject';
 import { MSG } from '../shared/messages';
 import type { Settings } from '../shared/types';
 import type { VideoContext } from '../pipeline/types';
@@ -50,10 +51,17 @@ function send(msg: unknown): Promise<unknown> {
   return new Promise((resolve) => {
     try {
       chrome.runtime.sendMessage(msg, (resp: unknown) => {
-        void chrome.runtime.lastError;
+        const err = chrome.runtime.lastError;
+        // lastError 必须读（读了才不会在控制台报 "Unchecked runtime.lastError"），
+        // 但也要打出来——「Extension context invalidated」这类错误
+        // 不打出来就完全看不到，只会表现为「插件没反应」。
+        if (err) {
+          console.warn('[anti-bubble] 消息失败：', err.message, 'type=', (msg as { type?: string })?.type);
+        }
         resolve(resp);
       });
-    } catch {
+    } catch (e) {
+      console.warn('[anti-bubble] 消息抛出异常：', e);
       resolve(null);
     }
   });
@@ -69,7 +77,7 @@ async function loadVideoContext(bvid: string): Promise<VideoContext | null> {
   try {
     // 一次 view 接口同时拿标题/简介和 aid/cid/upMid —— 少打一次，省一次限流等待
     const video = await fetchVideo(bili, bvid);
-    if (!video) return null;
+    if (!video) return domVideoContext(bvid);
 
     let summary: string | undefined;
     const cid = (video as { cid?: number }).cid;
@@ -93,6 +101,23 @@ async function loadVideoContext(bvid: string): Promise<VideoContext | null> {
       summary,
       aid: typeof video.aid === 'number' ? video.aid : undefined,
     };
+  } catch {
+    return domVideoContext(bvid);
+  }
+}
+
+/**
+ * API 拿不到视频信息时的兜底：直接从 DOM 读标题。
+ *
+ * 视频标题就摆在页面上（`.video-title`）。拿不到简介和 AI 总结没关系——
+ * **有标题就够生成词表了**，总比「没有语境 → 全部放行」强。
+ * 之前这里是直接返回 null，于是 API 一抖（风控/未登录）整页评论就都不判了。
+ */
+function domVideoContext(bvid: string): VideoContext | null {
+  try {
+    const title = (document.querySelector('.video-title')?.textContent ?? '').trim();
+    if (!title) return null;
+    return { bvid, title };
   } catch {
     return null;
   }
@@ -163,7 +188,7 @@ async function fetchOppositeRecommendations(
   // ① 要词表
   const wlResp = (await send({
     type: MSG.GET_WORDLIST, id: 'wl',
-    payload: { video, mode: settings.mode },
+    payload: { subject: videoSubject(video), mode: settings.mode },
   })) as { ok?: boolean; data?: { oppositeKeywords?: string[] } } | null;
 
   const keywords = wlResp?.ok ? (wlResp.data?.oppositeKeywords ?? []) : [];

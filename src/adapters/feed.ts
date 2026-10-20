@@ -28,7 +28,8 @@ export const feedAdapter: Adapter = {
           text: title,
           author: (card.querySelector('.bili-video-card__info--author')?.textContent ?? '').trim(),
           meta: {},
-          context: { page: 'feed' },
+          // 列表页没有「当前视频」，这条卡片**自己**就是它的视频语境。
+          context: { page: 'feed', videoTitle: title },
         });
       } catch {
         continue;

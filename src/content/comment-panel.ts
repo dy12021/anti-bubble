@@ -1,6 +1,7 @@
 import type { ContentItem, Verdict, Settings } from '../shared/types';
 import type { CommentItem } from '../bili/types';
 import type { VideoContext } from '../pipeline/types';
+import { videoSubject } from '../pipeline/subject';
 import { MSG } from '../shared/messages';
 import { CSS_PREFIX, injectStyles } from '../actions/fold';
 
@@ -247,19 +248,43 @@ export class CommentPanel {
 
     let verdicts: Verdict[] = [];
     try {
+      const videoCtx = this.opts.video ?? null;
+      // 评论区样本：让词表能写出**评论里真的会出现的字面表达**。
+      // 没有样本时模型只能凭空描述行为（「刷屏」「接龙」），
+      // 那种词做子串匹配永远打不中 —— 粗筛就废了，评论看着判过其实没判。
+      const samples = fresh
+        .map((c) => (c.content?.message ?? '').trim())
+        .filter((t) => t.length > 0)
+        .slice(0, 10)
+        .map((t) => t.slice(0, 60));
+      const payload = {
+        items: contentItems,
+        mode: this.opts.settings.mode,
+        // 必须带语境：后台靠它生成动态词表，没词表就没有粗筛，
+        // 粗筛不命中就不会调 LLM 精判，评论会全部原样放行。
+        subject: videoCtx ? videoSubject({ ...videoCtx, samples }) : null,
+      };
+      console.info(
+        `[anti-bubble] 发送判定请求：${contentItems.length} 条，` +
+          `mode=${this.opts.settings.mode}，` +
+          `语境=${
+            videoCtx
+              ? `视频(${JSON.stringify({ bvid: videoCtx.bvid, aid: videoCtx.aid, hasDesc: !!videoCtx.description, hasSum: !!videoCtx.summary })})`
+              : 'null'
+          }`,
+      );
       const resp = (await this.opts.send({
         type: MSG.JUDGE_ITEMS,
         id: `ab-cmt-${Date.now().toString(36)}`,
-        payload: {
-          items: contentItems,
-          mode: this.opts.settings.mode,
-          // 必须带 video：后台靠它生成动态词表，没词表就没有粗筛，
-          // 粗筛不命中就不会调 LLM 精判，评论会全部原样放行。
-          video: this.opts.video ?? null,
-        },
-      })) as { ok?: boolean; data?: { verdicts?: Verdict[] } };
+        payload,
+      })) as { ok?: boolean; data?: { verdicts?: Verdict[] }; error?: string };
+      console.info(
+        `[anti-bubble] 判定请求返回 ok=${resp?.ok} 判定数=${resp?.data?.verdicts?.length ?? 0}` +
+          (resp?.error ? ` err=${resp.error}` : ''),
+      );
       if (resp?.ok) verdicts = resp.data?.verdicts ?? [];
-    } catch {
+    } catch (e) {
+      console.warn('[anti-bubble] 判定请求异常：', e);
       return;
     }
 

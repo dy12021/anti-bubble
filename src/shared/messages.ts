@@ -35,6 +35,8 @@ export const MSG = {
   CLEAR_BLOCKED_LOG: 'CLEAR_BLOCKED_LOG',
   /** popup → bg：取白名单（已撤销、后续不再判定的内容） */
   GET_WHITELIST: 'GET_WHITELIST',
+  /** popup → bg：取最近一次失败（人话） */
+  GET_LAST_ERROR: 'GET_LAST_ERROR',
   /** popup → bg：清空画像 */
   CLEAR_PROFILE: 'CLEAR_PROFILE',
   /** bg → content：执行动作 */

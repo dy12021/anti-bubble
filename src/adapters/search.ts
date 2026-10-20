@@ -39,7 +39,8 @@ export const searchAdapter: Adapter = {
           text: title,
           author: (authorEl?.textContent ?? '').trim(),
           meta: {},
-          context: { page: 'search' },
+          // 列表页没有「当前视频」，这条卡片**自己**就是它的视频语境。
+          context: { page: 'search', videoTitle: title },
         });
       } catch {
         // 单张卡片出错不影响其它卡片

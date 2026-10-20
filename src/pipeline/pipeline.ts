@@ -2,8 +2,8 @@ import type { ContentItem, UserProfile, Verdict, Mode } from '../shared/types';
 import type { LlmClient } from '../bg/llm/client';
 import { coarseMatch } from './coarse';
 import { judgeItems } from './judge';
-import { buildWordlistPrompt, parseWordlist, buildFallbackWordlist } from './wordlist';
-import type { Wordlist, PipelineContext, JudgeInput } from './types';
+import { buildSubjectPrompt, parseWordlist, buildFallbackWordlist } from './wordlist';
+import type { Wordlist, PipelineContext, JudgeInput, JudgeTarget } from './types';
 
 export interface PipelineOptions {
   client: LlmClient;
@@ -113,6 +113,9 @@ export class Pipeline {
       author: item.author,
       videoTitle: item.context.videoTitle,
     }));
+    // 判的是「评论」还是「视频标题」——列表页判标题，视频页判评论。
+    // 说法不一样，混着说模型会把标题当评论理解。
+    const target: JudgeTarget = ctx.subject?.kind === 'list' ? 'title' : 'comment';
     const judged = await judgeItems(
       this.opts.client,
       inputs,
@@ -120,6 +123,7 @@ export class Pipeline {
       ctx.mode,
       ctx.profile,
       ctx.threshold,
+      target,
     );
 
     suspects.forEach((item, i) => {
@@ -144,10 +148,11 @@ export class Pipeline {
     if (ctx.wordlist) return ctx.wordlist;
     if (this.opts.wordlistProvider) return this.opts.wordlistProvider(ctx);
 
-    const video = ctx.video ?? { bvid: '', title: '' };
-    const fallback = buildFallbackWordlist(video, ctx.mode);
+    // 没有语境 = 判不了 = 全部放行。绝不用空语境硬凑一份词表。
+    if (!ctx.subject) return EMPTY_WORDLIST;
+    const fallback = buildFallbackWordlist(ctx.subject);
     try {
-      const { system, user } = buildWordlistPrompt(video, ctx.profile, ctx.mode);
+      const { system, user } = buildSubjectPrompt(ctx.subject, ctx.profile, ctx.mode);
       const raw = await this.opts.client.complete(user, { system, maxTokens: 1500 });
       return parseWordlist(raw, fallback);
     } catch {

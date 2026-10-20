@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.stubGlobal('chrome', {
   runtime: {
@@ -36,8 +36,25 @@ function commentDom(): Document {
   );
 }
 
-const FOLD: Verdict = {
-  itemId: '111', action: 'fold', reason: '在引战',
+/** 搜索页形态：若干张视频卡片。 */
+function searchDom(): Document {
+  const card = (bvid: string, title: string) => `
+    <div class="bili-video-card">
+      <a href="/video/${bvid}">
+        <h3 class="bili-video-card__info--tit">${title}</h3>
+        <span class="bili-video-card__info--author">UP主</span>
+      </a>
+    </div>`;
+  return new DOMParser().parseFromString(
+    `<html><body>
+      ${card('BV1aa411c7mD', '华为被制裁了吗')}
+      ${card('BV1bb411c7mD', '国产芯片终于突破')}
+      ${card('BV1cc411c7mD', '理性看待这次事件')}
+    </body></html>`, 'text/html',
+  );
+}
+
+const FOLD: Verdict = {  itemId: '111', action: 'fold', reason: '在引战',
   reasonCode: 'incitement', confidence: 0.9, revocable: true,
 };
 
@@ -96,7 +113,7 @@ describe('页面控制器', () => {
     expect(c.items).toHaveLength(0);
   });
 
-  it('判定请求带上 items / mode / video', async () => {
+  it('判定请求带上 items / mode / 视频语境', async () => {
     const d = commentDom();
     const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
     const c = new PageController({
@@ -110,16 +127,19 @@ describe('页面控制器', () => {
 
     const msg = send.mock.calls[0]![0] as {
       type: string;
-      payload: { items: ContentItem[]; mode: string; video: unknown };
+      payload: { items: ContentItem[]; mode: string; subject: unknown };
     };
     expect(msg.type).toBe(MSG.JUDGE_ITEMS);
     expect(msg.payload.mode).toBe('cocoon');
-    expect(msg.payload.video).toEqual({ bvid: 'BV1xx', title: '这个视频在讲 Rust' });
+    expect(msg.payload.subject).toEqual({
+      kind: 'video',
+      video: { bvid: 'BV1xx', title: '这个视频在讲 Rust' },
+    });
     expect(msg.payload.items).toHaveLength(1);
     expect(msg.payload.items[0]!.id).toBe('111');
   });
 
-  it('没有视频上下文时 video 传 null', async () => {
+  it('视频页没有视频上下文时语境传 null', async () => {
     const d = commentDom();
     const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
     const c = new PageController({
@@ -127,8 +147,8 @@ describe('页面控制器', () => {
       send, settings: settings(), root: d,
     });
     await c.start();
-    const msg = send.mock.calls[0]![0] as { payload: { video: unknown } };
-    expect(msg.payload.video).toBeNull();
+    const msg = send.mock.calls[0]![0] as { payload: { subject: unknown } };
+    expect(msg.payload.subject).toBeNull();
   });
 
   it('fold 判定会折叠对应内容', async () => {
@@ -194,6 +214,140 @@ describe('页面控制器', () => {
     });
     await c.start();
     expect((d.querySelector('.reply-item') as HTMLElement).style.display).not.toBe('none');
+  });
+
+  /**
+   * 回归防护：列表页必须有判定语境。
+   *
+   * 早先列表页一律传 null 语境 → 词表恒为空 → 粗筛永不命中 →
+   * 搜索页 42 张卡片全 pass，判定从来没跑过。
+   */
+  it('搜索页用这批内容本身构造列表语境', async () => {
+    const d = searchDom();
+    const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
+    const c = new PageController({
+      url: 'https://search.bilibili.com/all?keyword=%E5%8D%8E%E4%B8%BA',
+      send, settings: settings(), root: d,
+    });
+    await c.start();
+
+    const msg = send.mock.calls[0]![0] as {
+      payload: { items: ContentItem[]; subject: { kind: string; list?: { title: string; samples: string[] } } };
+    };
+    expect(msg.payload.subject.kind).toBe('list');
+    expect(msg.payload.subject.list!.title).toContain('华为');
+    expect(msg.payload.subject.list!.samples.length).toBeGreaterThan(0);
+    expect(msg.payload.items.length).toBeGreaterThan(0);
+  });
+
+  it('搜索页的语境 id 带 list 前缀', async () => {
+    const d = searchDom();
+    const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
+    const c = new PageController({
+      url: 'https://search.bilibili.com/all?keyword=x',
+      send, settings: settings(), root: d,
+    });
+    await c.start();
+    const msg = send.mock.calls[0]![0] as {
+      payload: { subject: { kind: string; list?: { id: string } } };
+    };
+    expect(msg.payload.subject.list!.id.startsWith('list:')).toBe(true);
+  });
+
+  /**
+   * 列表页的内容是异步加载 + 无限滚动的。
+   * 只判第一次 = 大部分卡片从来没被判过。
+   */
+  describe('列表页增量判定', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('新卡片进来会补判，且只送新的那一条', async () => {
+      const d = searchDom();
+      const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
+      const c = new PageController({
+        url: 'https://search.bilibili.com/all?keyword=x',
+        send, settings: settings(), root: d,
+      });
+      await c.start();
+      expect(send).toHaveBeenCalledTimes(1);
+
+      // 模拟滚动：新卡片插进来
+      const card = d.createElement('div');
+      card.className = 'bili-video-card';
+      card.innerHTML =
+        '<a href="/video/BV1dd411c7mD"><h3 class="bili-video-card__info--tit">新进来的视频标题</h3>' +
+        '<span class="bili-video-card__info--author">UP主</span></a>';
+      d.body.appendChild(card);
+
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(send).toHaveBeenCalledTimes(2);
+
+      const second = send.mock.calls[1]![0] as { payload: { items: { id: string }[] } };
+      expect(second.payload.items).toHaveLength(1);
+      expect(second.payload.items[0]!.id).toBe('BV1dd411c7mD');
+      c.stop();
+    });
+
+    it('语境只建一次（否则词表缓存永远不命中）', async () => {
+      const d = searchDom();
+      const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
+      const c = new PageController({
+        url: 'https://search.bilibili.com/all?keyword=x',
+        send, settings: settings(), root: d,
+      });
+      await c.start();
+      const first = send.mock.calls[0]![0] as { payload: { subject: { list?: { id: string } } } };
+
+      const card = d.createElement('div');
+      card.className = 'bili-video-card';
+      card.innerHTML =
+        '<a href="/video/BV1ee411c7mD"><h3 class="bili-video-card__info--tit">又一个视频</h3>' +
+        '<span class="bili-video-card__info--author">UP主</span></a>';
+      d.body.appendChild(card);
+      await vi.advanceTimersByTimeAsync(1200);
+
+      const second = send.mock.calls[1]![0] as { payload: { subject: { list?: { id: string } } } };
+      expect(second.payload.subject.list!.id).toBe(first.payload.subject.list!.id);
+      c.stop();
+    });
+
+    it('stop() 之后不再补判', async () => {
+      const d = searchDom();
+      const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
+      const c = new PageController({
+        url: 'https://search.bilibili.com/all?keyword=x',
+        send, settings: settings(), root: d,
+      });
+      await c.start();
+      c.stop();
+
+      const card = d.createElement('div');
+      card.className = 'bili-video-card';
+      card.innerHTML =
+        '<a href="/video/BV1ff411c7mD"><h3 class="bili-video-card__info--tit">停止后的视频</h3>' +
+        '<span class="bili-video-card__info--author">UP主</span></a>';
+      d.body.appendChild(card);
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    it('视频页不做增量判定（评论由自有面板按需加载）', async () => {
+      const d = commentDom();
+      const send = vi.fn(async (_msg: unknown) => ({ ok: true, data: { verdicts: [] } }));
+      const c = new PageController({
+        url: 'https://www.bilibili.com/video/BV1xx',
+        send, settings: settings(), root: d,
+      });
+      await c.start();
+      const extra = d.createElement('div');
+      extra.className = 'reply-item';
+      extra.setAttribute('data-rpid', '222');
+      extra.innerHTML = '<div class="reply-content">后来的评论</div>';
+      d.body.appendChild(extra);
+      await vi.advanceTimersByTimeAsync(1200);
+      expect(send).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('反向推荐渲染成独立区块且每条带理由', () => {

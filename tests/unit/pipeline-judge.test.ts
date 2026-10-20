@@ -91,3 +91,48 @@ describe('LLM 精判', () => {
     expect(parseJudgments(raw, ['1'], 'pass')[0]!.reason.length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * 判「视频标题」和判「评论」是两回事。
+ *
+ * 列表页抽到的是视频标题，如果还用评论的框架让模型判，
+ * 出来的理由会是「这条评论在引战」——驴唇不对马嘴。
+ */
+describe('精判的两种对象', () => {
+  it('默认按评论判（段落标记是「待判评论」）', () => {
+    const p = buildJudgePrompt([{ text: '独特评论ABC', author: 'u' }], wl, 'cocoon', null);
+    expect(p.user).toContain('【待判评论】');
+    expect(p.user).toContain('内容：');
+  });
+
+  it('判标题时段落标记换成「待判视频」，行内标签换成「标题：」', () => {
+    const p = buildJudgePrompt(
+      [{ text: '独特标题XYZ', author: 'UP' }],
+      wl, 'cocoon', null, 'title',
+    );
+    expect(p.user).toContain('【待判视频】');
+    expect(p.user).toContain('标题：独特标题XYZ');
+    expect(p.user).not.toContain('【待判评论】');
+  });
+
+  it('判标题时 system 明说是标题审核器', () => {
+    const p = buildJudgePrompt([{ text: 't', author: 'u' }], wl, 'cocoon', null, 'title');
+    expect(p.system).toContain('标题审核器');
+  });
+
+  it('判评论时带上视频标题做语境', () => {
+    const p = buildJudgePrompt(
+      [{ text: '独特评论ABC', author: 'u', videoTitle: '这个视频在讲 Rust' }],
+      wl, 'cocoon', null,
+    );
+    expect(p.user).toContain('这个视频在讲 Rust');
+  });
+
+  it('判标题时不再重复塞「该视频」段落（列表页没有单一视频）', () => {
+    const p = buildJudgePrompt(
+      [{ text: '独特标题XYZ', author: 'UP', videoTitle: '独特标题XYZ' }],
+      wl, 'cocoon', null, 'title',
+    );
+    expect(p.user).not.toContain('【该视频】');
+  });
+});

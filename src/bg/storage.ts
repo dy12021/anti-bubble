@@ -118,6 +118,39 @@ export async function getWhitelist(): Promise<string[]> {
   return getJson<string[]>(STORAGE_KEYS.whitelist, []);
 }
 
+/**
+ * 记一条「最近一次失败」。
+ *
+ * **为什么要有这个**：判定链路里的失败全都被静默降级了
+ * （LLM 挂了 → 空词表 → 全部放行），从用户视角看就是「插件没反应」。
+ * 把原因记下来、在配置面板里显示出来，用户才知道该去改什么
+ * （换模型？调大 token？换个 base_url？）。
+ */
+export async function setLastError(message: string): Promise<void> {
+  try {
+    await setJson(STORAGE_KEYS.lastError, {
+      message,
+      at: new Date().toISOString(),
+    });
+  } catch {
+    // 记失败本身绝不能把流程搞崩（也别在没有 chrome 的环境里抛）
+  }
+}
+
+/** 读最近一次失败。没有则返回 null。 */
+export async function getLastError(): Promise<{ message: string; at: string } | null> {
+  return getJson<{ message: string; at: string } | null>(STORAGE_KEYS.lastError, null);
+}
+
+/** 清掉最近一次失败（成功了就没什么好提示的了）。 */
+export async function clearLastError(): Promise<void> {
+  try {
+    await removeKey(STORAGE_KEYS.lastError);
+  } catch {
+    // 同上：清失败提示不该把流程搞崩
+  }
+}
+
 /** 加白名单，自动去重——撤销按钮可能被连点。 */
 export async function addToWhitelist(id: string): Promise<void> {
   const cur = await getWhitelist();

@@ -4,7 +4,7 @@ import { Pipeline } from '../pipeline/pipeline';
 import { WordlistService } from '../pipeline/wordlist-service';
 import { VerdictCache, verdictContextKey } from '../pipeline/verdict-cache';
 import { getProfile, getWhitelist } from './storage';
-import type { VideoContext, Wordlist, PipelineContext } from '../pipeline/types';
+import type { Subject, Wordlist, PipelineContext } from '../pipeline/types';
 
 /**
  * service worker 侧的判定服务。
@@ -20,7 +20,7 @@ export class PipelineService {
 
   async judge(
     items: ContentItem[],
-    opts: { mode: Mode; video: VideoContext | null; threshold: number },
+    opts: { mode: Mode; subject: Subject | null; threshold: number },
   ): Promise<Verdict[]> {
     const profile: UserProfile | null = await getProfile();
     const whitelist = await getWhitelist();
@@ -29,17 +29,20 @@ export class PipelineService {
       client: this.client,
       whitelist,
       wordlistProvider: async (ctx) => {
-        if (!ctx.video) {
+        // 没有语境 = 判不了 = 全部放行。
+        // 这里**不能**拿空词表硬判：空词表会让粗筛全不命中，
+        // 结果是「看起来判过了、其实一条都没判」。
+        if (!ctx.subject) {
           return { patterns: [], stance: '', oppositeKeywords: [], cacheKey: 'none' };
         }
-        return this.wordlists.get(ctx.video, ctx.profile, ctx.mode);
+        return this.wordlists.get(ctx.subject, ctx.profile, ctx.mode);
       },
     });
 
     const ctx: PipelineContext = {
       mode: opts.mode,
       profile,
-      video: opts.video,
+      subject: opts.subject,
       threshold: opts.threshold,
     };
 

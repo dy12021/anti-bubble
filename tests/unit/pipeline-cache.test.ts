@@ -17,6 +17,7 @@ vi.stubGlobal('chrome', {
 
 import { PipelineService } from '../../src/bg/pipeline-service';
 import { judgeItems } from '../../src/pipeline/judge';
+import { videoSubject } from '../../src/pipeline/subject';
 import { MAX_BATCH_ITEMS } from '../../src/shared/constants';
 import type { ContentItem, UserProfile } from '../../src/shared/types';
 import type { LlmClient } from '../../src/bg/llm/client';
@@ -32,6 +33,7 @@ const profile: UserProfile = {
 };
 
 const video = { bvid: 'BV1', title: '视频标题' };
+const subject = videoSubject(video);
 
 function item(over: Partial<ContentItem> = {}): ContentItem {
   return {
@@ -68,10 +70,10 @@ describe('判定缓存真的会被读', () => {
     const svc = new PipelineService(c);
     const items = [item({ id: 'c1', text: '引战' })];
 
-    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
     const callsAfterFirst = (c.complete as ReturnType<typeof vi.fn>).mock.calls.length;
 
-    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
     const callsAfterSecond = (c.complete as ReturnType<typeof vi.fn>).mock.calls.length;
 
     // 第二次不应产生新的调用（词表已缓存 + 判定已缓存）
@@ -82,8 +84,8 @@ describe('判定缓存真的会被读', () => {
     const c = clientWith(JSON.stringify(WORDLIST));
     const svc = new PipelineService(c);
     const items = [item({ id: 'c1', text: '引战' })];
-    const first = await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
-    const second = await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    const first = await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
+    const second = await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
     expect(second[0]!.action).toBe(first[0]!.action);
     expect(second[0]!.itemId).toBe(first[0]!.itemId);
   });
@@ -92,9 +94,9 @@ describe('判定缓存真的会被读', () => {
     const c = clientWith(JSON.stringify(WORDLIST));
     const svc = new PipelineService(c);
     const items = [item({ id: 'c1', text: '引战' })];
-    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
     const before = (c.complete as ReturnType<typeof vi.fn>).mock.calls.length;
-    await svc.judge(items, { mode: 'anti', video, threshold: 0.7 });
+    await svc.judge(items, { mode: 'anti', subject, threshold: 0.7 });
     expect((c.complete as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(before);
   });
 
@@ -102,7 +104,7 @@ describe('判定缓存真的会被读', () => {
     const c = clientWith(JSON.stringify(WORDLIST));
     const svc = new PipelineService(c);
     const items = [item({ id: 'a' }), item({ id: 'b' }), item({ id: 'c' })];
-    const vs = await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    const vs = await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
     expect(vs.map((v) => v.itemId)).toEqual(['a', 'b', 'c']);
   });
 });
@@ -123,12 +125,12 @@ describe('判定缓存与词表版本', () => {
 
     // 第一轮：画像版本 1
     store['profile'] = { ...profile, updatedAt: '2026-10-20T00:00:00.000Z' };
-    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
     const callsAfterFirst = (c.complete as ReturnType<typeof vi.fn>).mock.calls.length;
 
     // 第二轮：画像更新了 -> 词表缓存键变了 -> 旧判定不该命中
     store['profile'] = { ...profile, updatedAt: '2026-10-21T00:00:00.000Z' };
-    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
     expect((c.complete as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
 
@@ -138,7 +140,7 @@ describe('判定缓存与词表版本', () => {
     const items = [item({ id: 'c1' })];
 
     // video 传 null -> 词表 provider 返回空表 -> 粗筛没跑成 -> 全部放行
-    await svc.judge(items, { mode: 'cocoon', video: null, threshold: 0.7 });
+    await svc.judge(items, { mode: 'cocoon', subject: null, threshold: 0.7 });
 
     // 这种「放行」不是真正的判定，不该被缓存
     const cache = (store['verdictCache'] ?? {}) as Record<string, unknown>;
@@ -150,7 +152,7 @@ describe('判定缓存与词表版本', () => {
     const svc = new PipelineService(c);
     const items = [item({ id: 'c1', text: '引战' })];
 
-    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    await svc.judge(items, { mode: 'cocoon', subject, threshold: 0.7 });
 
     const cache = (store['verdictCache'] ?? {}) as Record<string, unknown>;
     expect(Object.keys(cache).length).toBeGreaterThan(0);

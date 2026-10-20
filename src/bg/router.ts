@@ -3,7 +3,7 @@ import type { ContentItem, LlmConfig, Mode, SettingsPatch, UserProfileInput } fr
 import {
   getSettings, saveSettings, getProfile, clearProfile,
   getLlmConfig, saveLlmConfig, getWhitelist, addToWhitelist,
-  getJson, setJson,
+  getJson, setJson, getLastError,
 } from './storage';
 import { STORAGE_KEYS } from '../shared/constants';
 import { createLlmClient } from './llm/client';
@@ -12,7 +12,8 @@ import { PipelineService } from './pipeline-service';
 import { WordlistService } from '../pipeline/wordlist-service';
 import { judgeOpposition } from '../recommend/opposition';
 import type { SearchItem } from '../bili/types';
-import type { VideoContext } from '../pipeline/types';
+import type { Subject, VideoContext } from '../pipeline/types';
+import { videoSubject } from '../pipeline/subject';
 
 /**
  * service worker 的消息路由。
@@ -92,6 +93,8 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
             model: cfg.model,
             timeoutMs: cfg.timeoutMs,
             hasKey: true,
+            ...(cfg.maxTokens ? { maxTokens: cfg.maxTokens } : {}),
+            ...(cfg.reasoningEffort ? { reasoningEffort: cfg.reasoningEffort } : {}),
           },
         };
       }
@@ -157,7 +160,7 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         let stance = '';
         if (p?.video) {
           const svc = new WordlistService(client);
-          const wl = await svc.get(p.video, profile, settings.mode);
+          const wl = await svc.get(videoSubject(p.video), profile, settings.mode);
           stance = wl.stance;
         }
 
@@ -171,6 +174,9 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
 
       case MSG.GET_WHITELIST:
         return { id, ok: true, data: await getWhitelist() };
+
+      case MSG.GET_LAST_ERROR:
+        return { id, ok: true, data: await getLastError() };
 
       case MSG.REVOKE: {
         const itemId = (req.payload as { itemId?: string })?.itemId;
@@ -198,21 +204,21 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
       }
 
       case MSG.GET_WORDLIST: {
-        const p = req.payload as { video?: VideoContext; mode?: Mode } | undefined;
+        const p = req.payload as { subject?: Subject; mode?: Mode } | undefined;
         const cfg = await getLlmConfig();
         if (!cfg) return { id, ok: false, error: '尚未配置 LLM' };
-        if (!p?.video) return { id, ok: false, error: '缺少视频上下文' };
+        if (!p?.subject) return { id, ok: false, error: '缺少判定语境' };
         const client = createLlmClient(cfg);
         const svc = new WordlistService(client);
         const settings = await getSettings();
         const profile = await getProfile();
-        const wordlist = await svc.get(p.video, profile, p.mode ?? settings.mode);
+        const wordlist = await svc.get(p.subject, profile, p.mode ?? settings.mode);
         return { id, ok: true, data: wordlist };
       }
 
       case MSG.JUDGE_ITEMS: {
         const p = req.payload as {
-          items?: ContentItem[]; mode?: Mode; video?: VideoContext | null;
+          items?: ContentItem[]; mode?: Mode; subject?: Subject | null;
         } | undefined;
         const items = p?.items ?? [];
         if (items.length === 0) return { id, ok: true, data: { verdicts: [] } };
@@ -224,14 +230,27 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         const mode = p?.mode ?? settings.mode;
         const client = createLlmClient(cfg);
 
-        // 视频上下文由 content script 通过页面桥取好后随 payload 传进来——
-        // service worker 自己发不了 B 站请求（拿不到 SESSDATA）。
-        const video = p?.video ?? null;
+        // 判定语境由 content script 传进来——
+        // service worker 自己发不了 B 站请求（拿不到 SESSDATA），
+        // 所以「当前视频」和「列表页这批内容」都只能由页面侧取好再传。
+        //
+        // **语境是判定的根**：没有它就没有动态词表，规则粗筛永不命中，
+        // 内容会全部原样放行（看起来就是「插件没反应」）。
+        const subject = p?.subject ?? null;
+        console.info(
+          `[anti-bubble] JUDGE_ITEMS 收到 ${items.length} 条，语境=${
+            subject
+              ? subject.kind === 'video'
+                ? `视频(bvid=${subject.video.bvid},aid=${subject.video.aid ?? '-'},title=${String(subject.video.title).slice(0, 20)})`
+                : `列表(${subject.list.title},样本 ${subject.list.samples.length} 条)`
+              : 'null'
+          }`,
+        );
 
         const svc = new PipelineService(client);
         const verdicts = await svc.judge(items, {
           mode,
-          video,
+          subject,
           threshold: settings.confidenceThreshold,
         });
 

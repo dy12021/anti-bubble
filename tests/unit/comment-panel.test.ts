@@ -108,7 +108,7 @@ describe('自有评论区', () => {
     expect(status?.textContent).toContain('登录');
   });
 
-  it('把评论送去判定，且必须带上视频上下文', async () => {
+  it('把评论送去判定，且必须带上视频语境', async () => {
     const { panel, anchor, send } = setup({ comments: [comment(11, '要判的评论')] });
     panel.mount(anchor);
     await tick();
@@ -118,13 +118,14 @@ describe('自有评论区', () => {
     );
     expect(judgeCall).toBeTruthy();
     const payload = (judgeCall![0] as {
-      payload: { items: { id: string; text: string }[]; video?: unknown };
+      payload: { items: { id: string; text: string }[]; subject?: unknown };
     }).payload;
     expect(payload.items[0]!.id).toBe('11');
     expect(payload.items[0]!.text).toBe('要判的评论');
-    // 必须带 video：后台靠它生成动态词表，没词表就没有粗筛，
+    // 必须带语境：后台靠它生成动态词表，没词表就没有粗筛，
     // 粗筛不命中就不会调 LLM 精判，评论会全部原样放行。
-    expect(payload.video).toBeTruthy();
+    expect(payload.subject).toBeTruthy();
+    expect((payload.subject as { kind?: string }).kind).toBe('video');
   });
 
   it('判定为折叠时隐藏内容并给出理由', async () => {

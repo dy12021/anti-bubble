@@ -2,37 +2,38 @@ import type { UserProfile, Mode } from '../shared/types';
 import type { LlmClient } from '../bg/llm/client';
 import type { BiliClient } from '../bili/client';
 import { fetchVideo, fetchVideoIdByBvid, fetchConclusion } from '../bili/api';
-import { getJson, setJson } from '../bg/storage';
+import { getJson, setJson, setLastError, clearLastError } from '../bg/storage';
 import { STORAGE_KEYS } from '../shared/constants';
 import {
-  buildWordlistPrompt, parseWordlist, buildFallbackWordlist, wordlistCacheKey,
+  buildSubjectPrompt, parseWordlist, buildFallbackWordlist, wordlistCacheKey,
 } from './wordlist';
-import type { VideoContext, Wordlist } from './types';
+import { subjectId } from './subject';
+import type { Subject, VideoContext, Wordlist } from './types';
 
 interface CachedWordlist extends Wordlist {
   profileUpdatedAt: string;
   /**
-   * 缓存键是哈希，反查不出视频 id，
-   * 所以把 videoId 一起存下来，invalidate 才知道该删哪些条目。
+   * 缓存键是哈希，反查不出语境 id，
+   * 所以把 subjectId 一起存下来，invalidate 才知道该删哪些条目。
    */
-  videoId: string;
+  subjectKey: string;
 }
 
 /**
  * 词表服务：生成 + 缓存。
  *
- * 缓存键 = 视频 id + 画像版本。画像更新后自动失效（判据可能要变）。
+ * 缓存键 = 语境 id + 画像版本。画像更新后自动失效（判据可能要变）。
  */
 export class WordlistService {
   constructor(private readonly client: LlmClient) {}
 
   async get(
-    video: VideoContext,
+    subject: Subject,
     profile: UserProfile | null,
     mode: Mode,
   ): Promise<Wordlist> {
     const profileUpdatedAt = profile?.updatedAt ?? '';
-    const key = wordlistCacheKey(video.bvid, profileUpdatedAt);
+    const key = wordlistCacheKey(subjectId(subject), profileUpdatedAt);
 
     const cache = await getJson<Record<string, CachedWordlist>>(
       STORAGE_KEYS.wordlistCache, {},
@@ -47,29 +48,44 @@ export class WordlistService {
       };
     }
 
-    const fallback = buildFallbackWordlist(video, mode);
+    const fallback = buildFallbackWordlist(subject);
     let wordlist: Wordlist;
     try {
-      const { system, user } = buildWordlistPrompt(video, profile, mode);
+      const { system, user } = buildSubjectPrompt(subject, profile, mode);
       const raw = await this.client.complete(user, { system });
       wordlist = parseWordlist(raw, { ...fallback, cacheKey: key });
-    } catch {
+      if (wordlist.patterns.length === 0) {
+        // 解析出来是空表 = 没解析出判据。和失败一样处理：
+        // 不缓存（否则这个语境永远拿不到词表），并把原因带出去。
+        const reason = '模型返回的内容里没有可用的判据（patterns 为空）';
+        console.error(`[anti-bubble] 词表生成失败：${reason}`);
+        await setLastError(`词表生成失败：${reason}`);
+        return { ...fallback, cacheKey: key, error: reason };
+      }
+    } catch (e) {
       // LLM 不可用 → 兜底词表（空模式 = 全部放行），不抛
-      wordlist = { ...fallback, cacheKey: key };
+      //
+      // **失败不写缓存**：写进去的话，这个语境的词表就永久是空的，
+      // 之后再也不会重试 —— 一次网络抖动会让这个页面从此再也不判定。
+      const reason = e instanceof Error ? e.message : String(e);
+      console.error(`[anti-bubble] 词表生成失败：${reason}`);
+      await setLastError(`词表生成失败：${reason}`);
+      return { ...fallback, cacheKey: key, error: reason };
     }
 
-    cache[key] = { ...wordlist, profileUpdatedAt, videoId: video.bvid };
+    cache[key] = { ...wordlist, profileUpdatedAt, subjectKey: subjectId(subject) };
     await setJson(STORAGE_KEYS.wordlistCache, cache);
+    await clearLastError();
     return wordlist;
   }
 
-  /** 丢掉某个视频的全部词表缓存（下次重新生成）。 */
-  async invalidate(videoId: string): Promise<void> {
+  /** 丢掉某个语境的全部词表缓存（下次重新生成）。 */
+  async invalidate(subjectKey: string): Promise<void> {
     const cache = await getJson<Record<string, CachedWordlist>>(
       STORAGE_KEYS.wordlistCache, {},
     );
     for (const [k, v] of Object.entries(cache)) {
-      if (v?.videoId === videoId || k.includes(videoId)) delete cache[k];
+      if (v?.subjectKey === subjectKey || k.includes(subjectKey)) delete cache[k];
     }
     await setJson(STORAGE_KEYS.wordlistCache, cache);
   }
