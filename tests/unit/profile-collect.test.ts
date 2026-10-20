@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { collectColdStart, toSample } from '../../src/profile/collect';
+import {
+  collectColdStart,
+  toSample,
+  COLD_START_MAX_FOLDERS,
+  COLD_START_MAX_PAGES_PER_FOLDER,
+  COLD_START_MAX_SAMPLES,
+} from '../../src/profile/collect';
 import { BiliClient } from '../../src/bili/client';
 import type { ContentItem } from '../../src/shared/types';
 
@@ -96,5 +102,69 @@ describe('样本采集', () => {
       sleep: async () => {},
     });
     expect(await collectColdStart(c)).toEqual([]);
+  });
+
+  /**
+   * 回归防护：冷启动的请求量必须有上限。
+   *
+   * 收藏夹多 + 每页 40 条 + 最多 10 页，10 个收藏夹就是 100 个请求，
+   * 每个还要等 1.2 秒限流 = 两分钟。而这些请求和「取视频上下文」共用
+   * 同一个限流器，于是冷启动会把主流程堵在后面——
+   * 表现为「视频页评论区面板迟迟不出现」。
+   */
+  it('冷启动的请求量有上限，不会淹没主流程', async () => {
+    const seen: string[] = [];
+    const c = new BiliClient({
+      getJson: async (url: string) => {
+        seen.push(url);
+        if (url.includes('/x/v3/fav/folder/created/list-all')) {
+          // 假装用户有 20 个收藏夹
+          return {
+            code: 0, message: '0',
+            data: { list: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, title: 'f', media_count: 999 })) },
+          };
+        }
+        if (url.includes('/x/v3/fav/resource/list')) {
+          // 每页都满
+          return {
+            code: 0, message: '0',
+            data: { medias: Array.from({ length: 40 }, (_, i) => ({ id: i, type: '2', title: 'v', bvid: 'BV' + i })) },
+          };
+        }
+        return { code: 0, message: '0', data: { list: [], page: { has_more: false } } };
+      },
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    });
+
+    await collectColdStart(c);
+
+    const favCalls = seen.filter((u) => u.includes('/x/v3/fav/resource/list')).length;
+    expect(favCalls).toBeLessThanOrEqual(COLD_START_MAX_FOLDERS * COLD_START_MAX_PAGES_PER_FOLDER);
+    expect(seen.length).toBeLessThan(30);
+  });
+
+  it('样本总数有上限', async () => {
+    const c = new BiliClient({
+      getJson: async (url: string) => {
+        if (url.includes('/x/v3/fav/folder/created/list-all')) {
+          return {
+            code: 0, message: '0',
+            data: { list: Array.from({ length: 20 }, (_, i) => ({ id: i + 1, title: 'f', media_count: 999 })) },
+          };
+        }
+        if (url.includes('/x/v3/fav/resource/list')) {
+          return {
+            code: 0, message: '0',
+            data: { medias: Array.from({ length: 40 }, (_, i) => ({ id: i, type: '2', title: 'v', bvid: 'BV' + i })) },
+          };
+        }
+        return { code: 0, message: '0', data: { list: [], page: { has_more: false } } };
+      },
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    });
+    const samples = await collectColdStart(c);
+    expect(samples.length).toBeLessThanOrEqual(COLD_START_MAX_SAMPLES);
   });
 });

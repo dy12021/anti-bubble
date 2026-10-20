@@ -31,10 +31,14 @@ export async function fetchFavorites(c: BiliClient): Promise<FavoriteFolder[]> {
   return data?.list ?? [];
 }
 
-/** 某个收藏夹的内容。ps 上限 40。 */
-export async function fetchFavoriteItems(c: BiliClient, fid: number): Promise<FavoriteItem[]> {
+/** 某个收藏夹的内容。ps 上限 40。maxPages 限制翻页数（冷启动要控制请求量）。 */
+export async function fetchFavoriteItems(
+  c: BiliClient,
+  fid: number,
+  maxPages = 10,
+): Promise<FavoriteItem[]> {
   const out: FavoriteItem[] = [];
-  for (let pn = 1; pn <= 10; pn++) {
+  for (let pn = 1; pn <= maxPages; pn++) {
     const data = await c.get<{ medias?: FavoriteItem[] }>('/x/v3/fav/resource/list', {
       fid, pn, ps: 40,
     });

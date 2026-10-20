@@ -111,7 +111,13 @@ function currentBvid(): string | null {
  * 后台（service worker）发不了 B 站请求。
  *
  * 已经有画像时跳过，避免每次打开页面都拉一遍。
+ *
+ * **延迟启动**：冷启动请求量大，而限流器是全页面共享的，
+ * 早启动会把主流程（取视频上下文、拉评论）堵在后面。
+ * 所以先让主流程跑完，再开始采集。
  */
+const COLD_START_DELAY_MS = 5000;
+
 async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
   if (!settings) return;
   if (!settings.collectHistory) return;
@@ -122,6 +128,8 @@ async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
   } | null;
   const profile = resp?.ok ? resp.data : null;
   if (profile && (profile.sampleCount ?? 0) > 0) return;
+
+  await new Promise((r) => setTimeout(r, COLD_START_DELAY_MS));
 
   try {
     const samples = await collectColdStart(bili, { includeHistory: settings.collectHistory });
@@ -225,12 +233,14 @@ async function main(): Promise<void> {
 
   const settings = resp?.ok && resp.data ? resp.data : null;
 
-  // 冷启动采集放后台跑，不阻塞首次渲染
-  void coldStartIfNeeded(settings);
-
-  // 视频上下文要在发判定请求前拿到（后台拿不到 B 站 cookie）
+  // 视频上下文要在发判定请求前拿到（后台拿不到 B 站 cookie）。
+  // **先做这个**——冷启动采集请求量大（限流器是共享的），
+  // 放在前面会把视频上下文堵在后面，表现为「评论区面板迟迟不出现」。
   const bvid = currentBvid();
   const video = bvid ? await loadVideoContext(bvid) : null;
+
+  // 冷启动采集放后台跑，不阻塞首次渲染与评论面板
+  void coldStartIfNeeded(settings);
 
   const ctrl = new PageController({
     url: location.href,

@@ -20,6 +20,19 @@ export function toSample(
   };
 }
 
+/** 冷启动采集的规模上限。
+ *
+ * 这些数字不是随手写的：收藏夹多 + 每页 40 条 + 最多 10 页，
+ * 10 个收藏夹就是 **100 个请求**，每个还要等 1.2 秒限流 = 两分钟。
+ * 而这些请求和「取视频上下文」共用同一个限流器，
+ * 于是冷启动会把主流程**堵在后面**——视频页的评论区面板迟迟不出现。
+ *
+ * 所以这里给死上限：收藏夹最多 3 个、每个最多 2 页、总数最多 120 条样本。
+ */
+export const COLD_START_MAX_FOLDERS = 3;
+export const COLD_START_MAX_PAGES_PER_FOLDER = 2;
+export const COLD_START_MAX_SAMPLES = 120;
+
 /**
  * 冷启动采样：观看历史 + 收藏夹。
  *
@@ -33,7 +46,7 @@ export async function collectColdStart(
   const samples: UserProfileInput[] = [];
 
   if (includeHistory) {
-    const history = await fetchHistory(c);
+    const history = await fetchHistory(c, COLD_START_MAX_SAMPLES);
     for (const h of history) {
       const info = h.history;
       if (!info?.bvid) continue;
@@ -49,10 +62,11 @@ export async function collectColdStart(
   }
 
   const folders = await fetchFavorites(c);
-  for (const f of folders.slice(0, 10)) {
-    const items = await fetchFavoriteItems(c, f.id);
+  for (const f of folders.slice(0, COLD_START_MAX_FOLDERS)) {
+    const items = await fetchFavoriteItems(c, f.id, COLD_START_MAX_PAGES_PER_FOLDER);
     for (const m of items) {
       if (!m.bvid) continue;
+      if (samples.length >= COLD_START_MAX_SAMPLES) break;
       samples.push({
         id: m.bvid,
         title: m.title ?? '',
@@ -62,9 +76,10 @@ export async function collectColdStart(
         origin: 'favorite',
       });
     }
+    if (samples.length >= COLD_START_MAX_SAMPLES) break;
   }
 
-  return samples;
+  return samples.slice(0, COLD_START_MAX_SAMPLES);
 }
 
 /** 增量样本：用户刚看过的视频。 */
