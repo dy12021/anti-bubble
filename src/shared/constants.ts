@@ -1,0 +1,35 @@
+/**
+ * 扩展内所有存储键的单一来源。改这里等于改 storage 布局。
+ */
+export const STORAGE_KEYS = {
+  profile: 'profile',
+  llmConfig: 'llmConfig',
+  wordlistCache: 'wordlistCache',
+  verdictCache: 'verdictCache',
+  whitelist: 'whitelist',
+  watchLog: 'watchLog',
+  settings: 'settings',
+  blockedLog: 'blockedLog',
+} as const;
+
+export const VERDICT_ACTIONS = ['pass', 'fold', 'hide', 'mark', 'recommend'] as const;
+export const MODES = ['cocoon', 'anti'] as const;
+export const PAGE_TYPES = ['search', 'video', 'feed', 'unknown'] as const;
+
+export const REASON_CODES = [
+  'dislike_match',      // 命中用户画像里的「不喜欢」
+  'incitement',         // 引战 / 挑起仇恨
+  'stance_opposite',    // 与用户可能支持的立场相反
+  'off_topic',          // 与画像明显无关
+  'recommendation',     // 反向推荐：确实是相反观点
+  'none',               // 放行
+] as const;
+
+/** 单次 LLM 请求允许的最大评论条数。批量判定时用，超过就分批。 */
+export const MAX_BATCH_ITEMS = 20;
+
+/** 反向推荐的触发阈值：视频页累计观看秒数。 */
+export const ANTI_TRIGGER_WATCH_SECONDS = 60;
+
+/** B 站风控阈值：连续请求间隔（毫秒）。5-8 次/分钟即会被拦。 */
+export const BILI_REQUEST_INTERVAL_MS = 1200;

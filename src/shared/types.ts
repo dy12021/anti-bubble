@@ -1,0 +1,100 @@
+import type {
+  VERDICT_ACTIONS, MODES, PAGE_TYPES, REASON_CODES,
+} from './constants';
+
+export type PageType = (typeof PAGE_TYPES)[number];
+export type ItemKind = 'video' | 'comment';
+export type VerdictAction = (typeof VERDICT_ACTIONS)[number];
+export type Mode = (typeof MODES)[number];
+export type VerdictReasonCode = (typeof REASON_CODES)[number];
+
+/** 内容所处的上下文。判定需要它来理解「这条评论在回应什么」。 */
+export interface ItemContext {
+  page: PageType;
+  /** 视频页/评论所属的视频 id；搜索页与推荐流为 undefined */
+  videoId?: string;
+  /** 视频标题或简介摘要，作为立场判定的语境 */
+  videoTitle?: string;
+  /** 父评论 id，楼中楼用 */
+  parentId?: string;
+}
+
+/**
+ * 适配层产出、判定层消费的统一内容单元。
+ * 适配器抽不到内容时返回空数组，绝不抛错。
+ */
+export interface ContentItem {
+  kind: ItemKind;
+  /** video → bvid；comment → rpid */
+  id: string;
+  /** 视频标题+简介片段，或评论正文 */
+  text: string;
+  /** UP主昵称 / 评论者昵称 */
+  author: string;
+  /** 分区、时长、播放量、点赞数等。语义随 kind 而定。 */
+  meta: Record<string, unknown>;
+  context: ItemContext;
+}
+
+/** 判定层产出、动作层执行的结果。 */
+export interface Verdict {
+  itemId: string;
+  action: VerdictAction;
+  /** 展示给用户的人话理由。每个非 pass 判定都必须有。 */
+  reason: string;
+  reasonCode: VerdictReasonCode;
+  /** 0-1。低于阈值按 pass 处理。 */
+  confidence: number;
+  /** 是否可撤销。pass 不可撤销。 */
+  revocable: boolean;
+}
+
+/** 画像的输入样本：一条观看/收藏记录。 */
+export interface UserProfileInput {
+  /** bvid */
+  id: string;
+  title: string;
+  author: string;
+  /** 分区名或 id */
+  category: string;
+  /** 观看时长（秒）；收藏夹样本没有，填 undefined */
+  watchSeconds?: number;
+  /** 样本采集时间 ISO 字符串，用于时间衰减 */
+  collectedAt: string;
+  /** 来源：history / favorite / follow / live */
+  origin: 'history' | 'favorite' | 'follow' | 'live';
+}
+
+/** LLM 归纳出的用户画像。 */
+export interface UserProfile {
+  interests: { tag: string; weight: number }[];
+  dislikes: string[];
+  stanceHints: Record<string, string>;
+  topics: string[];
+  updatedAt: string;
+  /** 样本总数，供 UI 展示 */
+  sampleCount: number;
+}
+
+/** LLM 配置。用户自带 Key。 */
+export interface LlmConfig {
+  provider: 'openai' | 'anthropic';
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  /** 单次请求超时（毫秒） */
+  timeoutMs: number;
+}
+
+/** 全局设置。 */
+export interface Settings {
+  mode: Mode;
+  /** 每个页面类型可独立开关 */
+  enabledPages: Record<PageType, boolean>;
+  /** 总开关 */
+  masterEnabled: boolean;
+  /** 是否拉取观看历史做冷启动 */
+  collectHistory: boolean;
+  /** 判定置信度阈值，低于此值按 pass 处理 */
+  confidenceThreshold: number;
+}
