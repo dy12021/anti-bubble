@@ -128,6 +128,7 @@ interface LlmConfigView {
   timeoutMs: number;
   hasKey: boolean;
   maxTokens?: number;
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high';
 }
 
 async function loadLlmConfig(): Promise<void> {
@@ -141,9 +142,30 @@ async function loadLlmConfig(): Promise<void> {
   el<HTMLInputElement>('baseUrl').value = c.baseUrl;
   el<HTMLInputElement>('model').value = c.model;
   el<HTMLInputElement>('maxTokens').value = String(c.maxTokens ?? 8192);
+  el<HTMLSelectElement>('reasoningEffort').value = c.reasoningEffort ?? 'low';
   el('keyState').textContent = c.hasKey
     ? '已保存 Key（不显示明文）。留空表示沿用。'
     : '尚未保存 Key。';
+}
+
+/**
+ * 最近一次失败。
+ *
+ * 判定链路的失败全都被静默降级了（LLM 挂了 → 空词表 → 全部放行），
+ * 从用户视角就是「插件没反应」。这里把原因摊开，用户才知道该改什么。
+ */
+async function loadLastError(): Promise<void> {
+  const r = await call<{ message: string; at: string } | null>(MSG.GET_LAST_ERROR);
+  const block = el('errorBlock');
+  const box = el('errorBox');
+  const e = r.data;
+  if (!e || !e.message) {
+    block.hidden = true;
+    box.textContent = '';
+    return;
+  }
+  block.hidden = false;
+  box.textContent = `${e.message}（${fmtTime(e.at)}）`;
 }
 
 function bindLlmConfig(): void {
@@ -158,6 +180,13 @@ function bindLlmConfig(): void {
           model: el<HTMLInputElement>('model').value.trim(),
           apiKey: el<HTMLInputElement>('apiKey').value.trim(),
           maxTokens: Number(el<HTMLInputElement>('maxTokens').value) || undefined,
+          // 空串 = 不设置（服务商不认这个字段时用）
+          reasoningEffort:
+            (el<HTMLSelectElement>('reasoningEffort').value || undefined) as
+              | 'low'
+              | 'medium'
+              | 'high'
+              | undefined,
           timeoutMs: 120000,
         },
       });
@@ -320,7 +349,9 @@ async function main(): Promise<void> {
   bindProfile();
   bindClearAll();
 
-  await Promise.all([loadSettings(), loadLlmConfig(), loadProfile(), loadBlocked()]);
+  await Promise.all([
+    loadSettings(), loadLlmConfig(), loadProfile(), loadBlocked(), loadLastError(),
+  ]);
 }
 
 void main();

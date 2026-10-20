@@ -115,6 +115,62 @@ describe('LLM 客户端', () => {
   });
 });
 
+/**
+ * 自愈重试：服务商不认某个可选字段时，摘掉它再试一次。
+ *
+ * `max_tokens` / `max_completion_tokens` / `reasoning_effort` 各家接受程度不同，
+ * 让用户自己猜该填什么是不友好的——能自己试出来就别麻烦用户。
+ */
+describe('服务商差异自愈', () => {
+  it('400 抱怨 reasoning_effort 时摘掉它重试', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_u, init) => {
+      const body = JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>;
+      if ('reasoning_effort' in body) {
+        return new Response('{"error":"reasoning_effort is not supported"}', { status: 400 });
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 });
+    });
+    const c = createLlmClient({ ...openAiConfig, reasoningEffort: 'low' });
+    expect(await c.complete('x')).toBe('ok');
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+
+    const retryBody = JSON.parse(String((fetchSpy.mock.calls[1]![1] as RequestInit).body)) as Record<string, unknown>;
+    expect('reasoning_effort' in retryBody).toBe(false);
+  });
+
+  it('400 要求 max_completion_tokens 时改用它重试', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_u, init) => {
+      const body = JSON.parse(String((init as RequestInit).body)) as Record<string, unknown>;
+      if (!('max_completion_tokens' in body)) {
+        return new Response('{"error":"use max_completion_tokens instead"}', { status: 400 });
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), { status: 200 });
+    });
+    const c = createLlmClient(openAiConfig);
+    expect(await c.complete('x')).toBe('ok');
+    const retryBody = JSON.parse(String((fetchSpy.mock.calls[1]![1] as RequestInit).body)) as Record<string, unknown>;
+    expect(retryBody['max_completion_tokens']).toBe(8192);
+    expect('max_tokens' in retryBody).toBe(false);
+  });
+
+  it('400 跟可选字段无关时直接报错（不乱重试）', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response('{"error":"model not found"}', { status: 400 }),
+    );
+    const c = createLlmClient(openAiConfig);
+    await expect(c.complete('x')).rejects.toThrow(/400/);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('400 且报错里带 Key 时被遮掉', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response('{"error":"bad key sk-secret"}', { status: 400 }),
+    );
+    const c = createLlmClient({ ...openAiConfig, apiKey: 'sk-secret' });
+    await expect(c.complete('x')).rejects.not.toThrow(/sk-secret/);
+  });
+});
+
 describe('parseJsonResponse', () => {
   it('能剥掉 markdown 包裹', () => {
     expect(parseJsonResponse('```json\n{"a":1}\n```')).toEqual({ a: 1 });

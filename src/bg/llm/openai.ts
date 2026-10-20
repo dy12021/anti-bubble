@@ -12,28 +12,48 @@ function redact(text: string, apiKey: string): string {
   return text.split(apiKey).join('***');
 }
 
-/** OpenAI 兼容协议。DeepSeek / MiniMax / Kimi / Qwen 等都走这个。 */
-export async function openAiComplete(
-  config: LlmConfig,
-  prompt: string,
-  system?: string,
-  maxTokens?: number,
-): Promise<string> {
-  const base = config.baseUrl.replace(/\/+$/, '');
-  const messages: ChatMessage[] = buildChatMessages(system, prompt);
-  const budget = maxTokens ?? config.maxTokens ?? DEFAULT_MAX_TOKENS;
+interface BodyOptions {
+  /** 用 max_completion_tokens 而不是 max_tokens */
+  completionTokens: boolean;
+  /** 是否带 reasoning_effort */
+  effort: boolean;
+}
 
+/**
+ * 组装请求体。
+ *
+ * `max_tokens` / `max_completion_tokens` / `reasoning_effort` 这三个字段
+ * **各服务商的接受程度不一样**：
+ * - 有的只认 max_completion_tokens
+ * - 有的只认 max_tokens
+ * - 有的（MiniMax-M3.1 强制 thinking 的那种）传 reasoning_effort=none 直接 400
+ *
+ * 所以它们都做成「可摘掉」的：真被拒了就在 {@link openAiComplete} 里
+ * 自动摘掉重试一次，而不是让用户自己去猜该填什么。
+ */
+function buildBody(
+  config: LlmConfig,
+  messages: ChatMessage[],
+  budget: number,
+  opts: BodyOptions,
+): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: config.model,
     messages,
   };
-  // 有些 OpenAI 兼容服务商会忽略 max_tokens，要求用 max_completion_tokens。
-  if (config.useMaxCompletionTokens) body['max_completion_tokens'] = budget;
+  if (opts.completionTokens) body['max_completion_tokens'] = budget;
   else body['max_tokens'] = budget;
-  // 只有服务商明确支持时才发。MiniMax-M3.1 强制 adaptive thinking，
-  // 传 none 会被 400 拒绝，所以这个字段默认不发。
-  if (config.reasoningEffort) body['reasoning_effort'] = config.reasoningEffort;
+  if (opts.effort && config.reasoningEffort) body['reasoning_effort'] = config.reasoningEffort;
+  return body;
+}
 
+/** 发一次请求。返回状态码与响应体文本（文本在调用方读一次就够）。 */
+async function post(
+  base: string,
+  config: LlmConfig,
+  body: Record<string, unknown>,
+  startedAt: number,
+): Promise<{ status: number; ok: boolean; text: string }> {
   let res: Response;
   try {
     res = await fetch(`${base}/chat/completions`, {
@@ -46,21 +66,74 @@ export async function openAiComplete(
       signal: AbortSignal.timeout(config.timeoutMs),
     });
   } catch (e) {
-    throw new Error(`LLM 请求失败：${e instanceof Error ? e.message : String(e)}`);
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(
+      `[anti-bubble] LLM 请求失败（${Date.now() - startedAt}ms）：${msg}；url=${base}/chat/completions`,
+    );
+    throw new Error(`LLM 请求失败：${msg}`);
+  }
+  console.info(`[anti-bubble] LLM 响应 ${res.status}（${Date.now() - startedAt}ms）`);
+  const text = await res.text().catch(() => '');
+  return { status: res.status, ok: res.ok, text };
+}
+
+/** OpenAI 兼容协议。DeepSeek / MiniMax / Kimi / Qwen 等都走这个。 */
+export async function openAiComplete(
+  config: LlmConfig,
+  prompt: string,
+  system?: string,
+  maxTokens?: number,
+): Promise<string> {
+  const base = config.baseUrl.replace(/\/+$/, '');
+  const messages = buildChatMessages(system, prompt);
+  const budget = maxTokens ?? config.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const startedAt = Date.now();
+
+  let opts: BodyOptions = {
+    completionTokens: config.useMaxCompletionTokens === true,
+    effort: config.reasoningEffort !== undefined,
+  };
+
+  let result = await post(base, config, buildBody(config, messages, budget, opts), startedAt);
+
+  // **自愈重试**：400 多半是某个可选字段这个服务商不认。
+  // 摘掉那个字段再试一次——比让用户自己猜「该填 max_tokens 还是
+  // max_completion_tokens」「该不该传 reasoning_effort」友好得多。
+  if (!result.ok && result.status === 400) {
+    if (opts.effort && /reasoning_effort/i.test(result.text)) {
+      console.warn('[anti-bubble] 服务商不接受 reasoning_effort，摘掉后重试');
+      opts = { ...opts, effort: false };
+    } else if (!opts.completionTokens && /max_completion_tokens/i.test(result.text)) {
+      console.warn('[anti-bubble] 服务商要求 max_completion_tokens，改用它重试');
+      opts = { ...opts, completionTokens: true };
+    } else if (opts.completionTokens && /max_tokens/i.test(result.text)) {
+      console.warn('[anti-bubble] 服务商只认 max_tokens，改用它重试');
+      opts = { ...opts, completionTokens: false };
+    } else {
+      const detail = redact(result.text.slice(0, 200), config.apiKey);
+      throw new Error(`LLM 返回 HTTP 400：${detail}`);
+    }
+    result = await post(base, config, buildBody(config, messages, budget, opts), startedAt);
   }
 
-  if (!res.ok) {
+  if (!result.ok) {
     // 只回传状态码与响应体前 200 字，不含请求头（Key 在请求头里）
-    const detail = redact((await res.text().catch(() => '')).slice(0, 200), config.apiKey);
-    throw new Error(`LLM 返回 HTTP ${res.status}：${detail}`);
+    const detail = redact(result.text.slice(0, 200), config.apiKey);
+    throw new Error(`LLM 返回 HTTP ${result.status}：${detail}`);
   }
 
-  const data = (await res.json()) as {
+  let data: {
     choices?: {
       message?: { content?: string | null; reasoning_content?: string | null };
       finish_reason?: string;
     }[];
   };
+  try {
+    data = JSON.parse(result.text) as typeof data;
+  } catch {
+    throw new Error('LLM 响应不是合法 JSON');
+  }
+
   const message = data.choices?.[0]?.message;
   const content = message?.content;
 

@@ -87,11 +87,32 @@
         <input type="number" id="maxTokens" min="256" step="256" value="8192" />
       </label>
 
+      <label class="field">
+        <span class="field-label">
+          推理强度
+          <span class="hint inline">
+            判据抽取、立场分类这类活不需要深度思考。调低能快一个数量级（实测 4.8s vs 70s）。
+          </span>
+        </span>
+        <select id="reasoningEffort">
+          <option value="low">低（推荐，最快）</option>
+          <option value="medium">中</option>
+          <option value="high">高</option>
+          <option value="">不设置（服务商不支持时选这个）</option>
+        </select>
+      </label>
+
       <div class="row">
         <button type="button" class="btn btn-primary" id="saveLlm">保存配置</button>
         <button type="button" class="btn" id="testLlm">测试连通性</button>
       </div>
       <p class="status" id="llmStatus"></p>
+    </section>
+
+    <!-- 最近一次失败 -->
+    <section class="block" id="errorBlock" hidden>
+      <h2>最近一次失败</h2>
+      <div class="error-box" id="errorBox"></div>
     </section>
 
     <!-- 画像 -->
