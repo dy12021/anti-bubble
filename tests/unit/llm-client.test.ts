@@ -56,6 +56,8 @@ describe('LLM 客户端', () => {
     ]);
     expect(body.max_tokens).toBe(128);
     expect(String(init.body)).not.toContain('sk-test');
+    // 超时必须靠 AbortSignal.timeout，而不是没有上限地等
+    expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('Anthropic 协议用 x-api-key 头', async () => {
@@ -94,6 +96,15 @@ describe('LLM 客户端', () => {
     const c = createLlmClient({ ...openAiConfig, apiKey: 'sk-secret' });
     await expect(c.complete('x')).rejects.toThrow(/500/);
     await expect(c.complete('x')).rejects.not.toThrow(/sk-secret/);
+  });
+
+  it('响应体回显 Key 时也被遮掉', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response('{"error":"invalid key sk-secret"}', { status: 401 }),
+    );
+    const c = createLlmClient({ ...openAiConfig, apiKey: 'sk-secret' });
+    await expect(c.complete('x')).rejects.not.toThrow(/sk-secret/);
+    await expect(c.complete('x')).rejects.toThrow(/401/);
   });
 
   it('网络异常被包装成错误', async () => {

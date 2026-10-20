@@ -1,5 +1,5 @@
 import { STORAGE_KEYS } from '../shared/constants';
-import type { Settings, UserProfile, LlmConfig } from '../shared/types';
+import type { Settings, SettingsPatch, UserProfile, LlmConfig } from '../shared/types';
 
 /**
  * chrome.storage.local 的 Promise 包装。
@@ -66,8 +66,14 @@ export async function getSettings(): Promise<Settings> {
   };
 }
 
-/** 存设置（补丁语义）。返回合并后的完整设置。 */
-export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
+/**
+ * 存设置（补丁语义）。返回合并后的完整设置。
+ *
+ * 参数类型是 `SettingsPatch` 而不是 `Partial<Settings>`：
+ * 后者会让 `enabledPages` 变成「要么不给、要么给全」，而我们要的是
+ * 只关一个页面、其它页面不受影响（浅合并）。
+ */
+export async function saveSettings(patch: SettingsPatch): Promise<Settings> {
   const cur = await getSettings();
   const next: Settings = {
     ...cur,

@@ -98,3 +98,14 @@ export interface Settings {
   /** 判定置信度阈值，低于此值按 pass 处理 */
   confidenceThreshold: number;
 }
+
+/**
+ * 设置的增量更新。
+ *
+ * 不能直接用 `Partial<Settings>`：那样 `enabledPages` 也变成可选的整体，
+ * 传 `{ enabledPages: { search: false } }` 会因为缺其它三个页面而编译不过，
+ * 但运行时我们恰恰要做**浅合并**（只关一个页面，不动其它）。
+ */
+export type SettingsPatch = Omit<Partial<Settings>, 'enabledPages'> & {
+  enabledPages?: Partial<Record<PageType, boolean>>;
+};

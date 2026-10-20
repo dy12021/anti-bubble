@@ -1,5 +1,14 @@
 import type { LlmConfig } from '../../shared/types';
 
+/**
+ * 响应体是外部内容，理论上可能把 Key 原样回显。
+ * 错误信息里绝对不能出现 Key，所以兜底遮一遍。
+ */
+function redact(text: string, apiKey: string): string {
+  if (!apiKey) return text;
+  return text.split(apiKey).join('***');
+}
+
 /** Anthropic 原生协议（Claude）。 */
 export async function anthropicComplete(
   config: LlmConfig,
@@ -33,7 +42,7 @@ export async function anthropicComplete(
 
   if (!res.ok) {
     // 同 openai.ts：只回传状态码与响应体前 200 字，绝不回传请求头
-    const detail = (await res.text().catch(() => '')).slice(0, 200);
+    const detail = redact((await res.text().catch(() => '')).slice(0, 200), config.apiKey);
     throw new Error(`LLM 返回 HTTP ${res.status}：${detail}`);
   }
 

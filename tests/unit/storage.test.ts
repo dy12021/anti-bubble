@@ -87,11 +87,9 @@ describe('存储层', () => {
 
   it('enabledPages 是浅合并而不是整体替换', async () => {
     await setJson('settings', defaultSettings());
-    // 这里必须只传部分页面开关：整体传全量的话，「合并」和「替换」的结果一样，测不出差别。
-    // 类型上 Settings['enabledPages'] 是完整 Record，Partial<Settings> 只放宽了顶层，
-    // 所以这里显式断言一次（契约层的已知毛刺，见 taskA-report.md）。
-    const patch = { enabledPages: { search: false } } as Partial<Settings>;
-    const next = await saveSettings(patch);
+    // 只传部分页面开关：整体传全量的话，「合并」和「替换」的结果一样，测不出差别。
+    // 这里不写类型断言——SettingsPatch 就是为了让这个调用在类型上成立。
+    const next = await saveSettings({ enabledPages: { search: false } });
     expect(next.enabledPages.search).toBe(false);
     expect(next.enabledPages.video).toBe(true);
     expect(next.enabledPages.feed).toBe(true);

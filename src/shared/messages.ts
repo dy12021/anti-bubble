@@ -25,6 +25,8 @@ export const MSG = {
   TEST_LLM: 'TEST_LLM',
   /** popup → bg：取屏蔽记录 */
   GET_BLOCKED_LOG: 'GET_BLOCKED_LOG',
+  /** popup → bg：取白名单（已撤销、后续不再判定的内容） */
+  GET_WHITELIST: 'GET_WHITELIST',
   /** popup → bg：清空画像 */
   CLEAR_PROFILE: 'CLEAR_PROFILE',
   /** bg → content：执行动作 */
