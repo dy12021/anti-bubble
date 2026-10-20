@@ -63,9 +63,9 @@ async function main(): Promise<void> {
   await cdp.send('Page.enable');
   await cdp.send('Runtime.enable');
 
-  if (!page.url.includes('/video/')) {
-    console.log('导航到视频页…');
-    await cdp.send('Page.navigate', { url: 'https://www.bilibili.com/video/BV1GJ411x7h7' });
+  if (process.env.NAV_URL) {
+    console.log('导航到 ' + process.env.NAV_URL);
+    await cdp.send('Page.navigate', { url: process.env.NAV_URL });
     await new Promise((r) => setTimeout(r, 20000));
   }
 

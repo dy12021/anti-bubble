@@ -78,7 +78,14 @@ $browserArgs = @(
   "--no-first-run",
   "--no-default-browser-check",
   "--disable-features=Translate,OptimizationGuideModelDownloading",
-  "https://www.bilibili.com/"
+  # Start on about:blank, NOT on bilibili.com.
+  #
+  # Edge treats bilibili.com as a PWA and opens it in its own app window --
+  # a small 524x364 window floating on top of the main one. That is what the
+  # "small window stacked on the big window" screenshots showed.
+  # Starting blank keeps the harness from creating that window at all;
+  # the verification scripts navigate where they need to go.
+  "about:blank"
 )
 
 Write-Host "launching $Browser (CDP port $Port)..."
