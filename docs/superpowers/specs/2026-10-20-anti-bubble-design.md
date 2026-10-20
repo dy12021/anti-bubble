@@ -443,7 +443,6 @@ tests/
 ## 10.1 真机验证发现的问题（2026-10-20）
 
 以下问题**单元测试全部通过**、只有真实浏览器才暴露。已全部修复。
-
 | # | 问题 | 症状 | 根因 |
 | --- | --- | --- | --- |
 | 1 | **manifest 没声明 content_scripts** | 扩展加载了但什么都不干 | 计划里漏了，`CRXJS` 不会自动补 |
@@ -457,6 +456,7 @@ tests/
 | 9 | **`applyFold` 只认 `[data-rpid]`** | 搜索页/推荐流折叠完全不生效 | 那些页面的 id 是 bvid 不是 rpid |
 | 10 | **`applyMark` 判重查全页** | 页面上有一个标识后，后面全拿不到 | 判重范围错了 |
 | 11 | **评论判定请求没带 video** | 评论全部原样放行 | 后台拿不到视频上下文 → 空词表 → 粗筛永不命中 |
+| 12 | **多个 BiliClient 实例各限各的** | 视频页面板时有时无（Chrome 能出、Edge 出不来） | 限流状态是**实例级**的，各处各自 new 一个 → 请求互相不避让 → 撞 -352 风控 → 重试退避 → 拿不到数据。**限流器存在的前提是全局只有一个** |
 
 ### 真机验证脚本（都在 `scripts/`）
 
@@ -469,6 +469,20 @@ tests/
 | `e2e-judge.ts` | 端到端：真实页面 + 真实 LLM → 评论被折叠/标识 |
 | `shot-popup.ts` | 打开并截图配置面板 |
 | `probe-*.ts` | 各类定点诊断（DOM 结构、窗口、API 参数组合） |
+| `close-small-windows.ts` | 清理 PWA 小窗 |
+
+### 真机验证的注意事项（都是踩过的）
+
+1. **content script 只在页面加载时注入**。`Page.navigate` 到**当前同一个 URL**
+   会被当作同文档导航，不重新加载 → content script 不注入。相同 URL 必须用
+   `Page.reload({ignoreCache:true})`。
+2. **`Runtime.enable` 不回放历史控制台消息**。要抓页面加载期的日志，
+   必须「先连上 → enable → 再导航/reload → 再收集」。
+3. **MV3 service worker 懒加载**，30 秒空闲即休眠。找不到 SW target 时，
+   刷新一次页面（content script 发消息）就能唤醒。
+4. **两个浏览器实例要分开端口**（9333 / 9334），否则脚本会互相抢页面导航。
+5. **限流必须是全局的**：见问题 #12，多实例 = 没限流。
+
 
 > **Chrome 142+ 删除了 `DisableLoadExtensionCommandLineSwitch` 特性**，
 > `--load-extension` 在稳定版彻底失效。唯一可行的自动化路径是 CDP 的

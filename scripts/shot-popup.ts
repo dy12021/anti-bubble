@@ -4,6 +4,7 @@
  * popup 的 URL 是 chrome-extension://<id>/src/popup/index.html
  */
 import { writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
@@ -70,21 +71,43 @@ class Cdp {
   close(): void { this.ws.close(); }
 }
 
+/**
+ * 由扩展目录的绝对路径算出扩展 ID —— 这条路**不可靠**
+ * （Chrome 对 Windows 路径的归一化方式与直接 sha256(path) 不同，实测算出来的 ID 不对）。
+ * 保留仅作参考，实际一律用 loadUnpacked 的返回值。
+ */
+function extensionIdFromPath(absPath: string): string {
+  const hash = createHash('sha256').update(absPath, 'utf8').digest();
+  let id = '';
+  for (let i = 0; i < 16; i++) {
+    const b = hash[i]!;
+    id += String.fromCharCode(97 + (b >> 4));
+    id += String.fromCharCode(97 + (b & 0x0f));
+  }
+  return id;
+}
+
 async function main(): Promise<void> {
   const version = await httpJson('/json/version');
   const browser = await Cdp.connect(version.webSocketDebuggerUrl);
 
-  // 从已有 target 里找扩展 id
-  const targets = (await httpJson('/json/list')) as any[];
-  const extTarget = targets.find((t) => (t.url ?? '').startsWith('chrome-extension://'));
-  const extId = extTarget
-    ? new URL(extTarget.url).host
-    : (process.env.EXT_ID ?? '');
+  // 扩展 id：一律用 loadUnpacked 的返回值。
+  // 不要从 target 列表里猜——里面可能混着之前用错 id 打开的「已阻止」错误页。
+  let extId = '';
+  try {
+    const r = await browser.send('Extensions.loadUnpacked', {
+      path: 'D:\\coding\\anti-bubble\\dist',
+    });
+    extId = r?.id ?? '';
+  } catch (e) {
+    console.error('loadUnpacked 失败:', e instanceof Error ? e.message : String(e));
+  }
+
   if (!extId) {
-    console.error('找不到扩展 target，先跑 load-extension.ts');
+    console.error('拿不到扩展 id。');
     process.exit(1);
   }
-  console.log('扩展 id:', extId);
+  console.log('扩展 id:', extId, '(来自 loadUnpacked)');
 
   const popupUrl = `chrome-extension://${extId}/src/popup/index.html`;
   console.log('打开 popup:', popupUrl);
