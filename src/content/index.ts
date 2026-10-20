@@ -198,6 +198,7 @@ async function mountCommentPanel(
     send,
     settings,
     videoTitle: video.title,
+    video,
     onRevoke: (id) => {
       void send({ type: MSG.REVOKE, id: 'revoke', payload: { itemId: id } });
     },

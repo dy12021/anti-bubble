@@ -1,5 +1,6 @@
 import type { ContentItem, Verdict, Settings } from '../shared/types';
 import type { CommentItem } from '../bili/types';
+import type { VideoContext } from '../pipeline/types';
 import { MSG } from '../shared/messages';
 import { CSS_PREFIX, injectStyles } from '../actions/fold';
 
@@ -38,6 +39,13 @@ export interface CommentPanelOptions {
   onRevoke?: (id: string) => void;
   /** 视频标题，作为判定语境 */
   videoTitle?: string;
+  /**
+   * 视频上下文（bvid/标题/简介/官方 AI 总结）。
+   *
+   * **必须带上**：后台要用它生成动态词表，没有词表就没有粗筛，
+   * 粗筛不命中就不会调 LLM 精判 —— 评论会全部原样放行。
+   */
+  video?: VideoContext | null;
 }
 
 const PAGE_SIZE = 20;
@@ -242,7 +250,13 @@ export class CommentPanel {
       const resp = (await this.opts.send({
         type: MSG.JUDGE_ITEMS,
         id: `ab-cmt-${Date.now().toString(36)}`,
-        payload: { items: contentItems, mode: this.opts.settings.mode },
+        payload: {
+          items: contentItems,
+          mode: this.opts.settings.mode,
+          // 必须带 video：后台靠它生成动态词表，没词表就没有粗筛，
+          // 粗筛不命中就不会调 LLM 精判，评论会全部原样放行。
+          video: this.opts.video ?? null,
+        },
       })) as { ok?: boolean; data?: { verdicts?: Verdict[] } };
       if (resp?.ok) verdicts = resp.data?.verdicts ?? [];
     } catch {

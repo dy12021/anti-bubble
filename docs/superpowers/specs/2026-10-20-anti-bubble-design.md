@@ -109,7 +109,8 @@
 ```
 ┌─────────────────────────────────────────────────────────┐
 │ ① 适配层 Adapter                                          │
-│   SearchAdapter / VideoAdapter / FeedAdapter             │
+│   SearchAdapter / FeedAdapter  —— 从 DOM 抽视频卡片       │
+│   VideoAdapter                 —— 从 DOM 抽评论（**已废弃**）│
 │   职责：从页面 DOM 抽出「候选内容单元」                    │
 │   约束：抽不动 → 硬兜底，本页面不做任何干预，不报错不阻塞   │
 └──────────────────────┬──────────────────────────────────┘
@@ -130,6 +131,30 @@
 ```
 
 **为什么必须解耦**：首版一次做齐三个页面（决策 #6）。若判定逻辑在三个页面各写一遍，B 站改版要改三处，且改版风险会同时爆在三处。解耦后，改版只影响适配层。
+
+#### 视频页的架构变更（2026-10-20 真机验证后）
+
+**原设计**：视频页用 `VideoAdapter` 从 DOM 抽 `.reply-item[data-rpid]`，再在 DOM 上折叠。
+
+**实测结论**：这条路在今天的 B 站**走不通**。真实 DOM 结构是
+
+```
+#commentapp > <bili-comments>                  ← open shadow root（可访问）
+               └─ <div> 的 closed shadow root  ← 评论在这里
+```
+
+**closed shadow root 连页面主世界的脚本都进不去**，content script 更进不去。
+实测 `.reply-item` / `.bili-comment-thread-renderer` / `.bpx-comment` 在深层搜索下
+全部为 0，评论区只剩一个转圈的 spinner。
+
+**改法**：视频页的评论走 **B 站 API + 自渲染评论区**（`src/content/comment-panel.ts`）。
+搜索页/推荐流不受影响（普通 DOM，实测 42 张卡片可抽）。
+
+代价：没有 B 站原生的楼中楼、点赞、表情。补偿：面板顶部有「显示 B 站原生评论」开关。
+
+> **教训**：DOM 选择器失效是**只有真机能发现**的问题——
+> 单元测试用 fixture 验证选择器，而 fixture 是我们自己写的，
+> 它天然符合我们的假设。**必须在真实页面上验证选择器还有效。**
 
 ### 3.2 核心数据结构
 
@@ -268,6 +293,24 @@ interface UserProfile {
 
 注意三者的分工：词表负责**召回**（把可能相关的挑出来），规则负责**过滤**（零成本剔除明显无关），精判负责**定性**（下最终结论）。缺任何一环，判定质量或成本都会崩。
 
+### 5.6 推理模型的 token 预算（2026-10-20 实测补充）
+
+带 thinking 的推理模型（实测 `MiniMax-M3.1-Flash`）会**先思考再回答，思考过程和最终答案共用 token 预算**。
+
+- 预算给小了 → 最终 `content` 是**空串** → JSON 解析失败 → **判定链路静默失效**
+  （看起来像「插件没反应」，实际上一次判定都没发生）
+- `reasoning_effort: "none"` **关不掉**：M3.1 强制 adaptive thinking，传 none 会被 400 拒绝
+  （`requires adaptive thinking; reasoning effort none is not allowed`）
+- 实测同一请求 `max_tokens=2000` 时而返回正常、时而返回空串——adaptive thinking 长度会波动
+
+**对策**：
+1. 默认 `maxTokens = 8192`（实测稳定）
+2. 客户端在 `content` 为空但有 `reasoning_content` 时，抛出**可操作的**错误
+   （「只返回了思考过程、没有最终答案——token 预算不够」），而不是让上层静默降级
+3. `LlmConfig` 增加可选的 `reasoningEffort` 与 `useMaxCompletionTokens`
+   —— 只有确定服务商支持时才发这两个字段
+4. 判定是**异步**的：LLM 判定完成前页面照常可用
+
 ---
 
 ## 6. 反向推荐
@@ -358,27 +401,78 @@ LLM 判定是概率性的，误伤必然发生。没有可解释与可撤销，�
 
 ```
 src/
-  adapters/          # ① 适配层：每个页面一个，只抽 DOM
-    search.ts  video.ts  feed.ts
-    types.ts         # ContentItem 定义
-  pipeline/          # ② 判定层：三页面复用
-    profile.ts       # 画像构建与合并
-    wordlist.ts      # 动态词表生成与缓存
-    coarse.ts        # 规则粗筛
-    judge.ts         # LLM 精判
-    llm/             # LLM 客户端抽象
-      client.ts  openai.ts  anthropic.ts
-    cache.ts
+  shared/            # 跨上下文唯一真相源（无 chrome.* 依赖，可单测）
+    types.ts  constants.ts  hash.ts  messages.ts
+  bili/              # B 站 API 客户端
+    wbi.ts           # WBI 签名 + 同步 MD5
+    client.ts        # 限速 / 退避 / 错误降级
+    api.ts           # 各端点封装
+    types.ts
+  profile/           # 画像子系统
+    merge.ts  rules.ts  induce.ts  collect.ts
+  pipeline/          # ② 判定层，三页面复用
+    types.ts         # VideoContext / Wordlist / JudgeInput
+    wordlist.ts  coarse.ts  judge.ts  pipeline.ts
+    wordlist-service.ts  verdict-cache.ts
+  adapters/          # ① 适配层：搜索页 / 推荐流（视频页已改走 API）
+    types.ts  search.ts  feed.ts  index.ts
   actions/           # ③ 动作层
-    fold.ts  mark.ts  recommend.ts
-    explain.ts       # 理由展示与撤销
-  storage/           # 画像 / 配置 / 缓存 / 白名单
-  bg/                # service worker 入口
-  content/           # content script 入口
+    fold.ts  mark.ts  recommend.ts  index.ts
+  recommend/         # 反向推荐召回与立场判定
+    recall.ts  opposition.ts
+  content/           # content script
+    index.ts         # 入口
+    controller.ts    # 抽 → 判 → 执行
+    comment-panel.ts # 自有评论区（视频页）
+    page-bridge.ts   # 页面上下文请求桥
+    page-fetch.js    # 注入页面上下文的 fetch 代理
+    page.ts          # 页面类型识别
+  bg/                # service worker
+    index.ts  router.ts  storage.ts
+    profile-service.ts  pipeline-service.ts
+    llm/             # client.ts  openai.ts  anthropic.ts
   popup/             # 配置面板
+    index.html  main.ts  style.css
+scripts/             # 真机验证与诊断脚本（CDP 驱动）
 tests/
-  fixtures/          # DOM fixture，改版检测的锚点
+  unit/  fixtures/
 ```
+
+---
+
+## 10.1 真机验证发现的问题（2026-10-20）
+
+以下问题**单元测试全部通过**、只有真实浏览器才暴露。已全部修复。
+
+| # | 问题 | 症状 | 根因 |
+| --- | --- | --- | --- |
+| 1 | **manifest 没声明 content_scripts** | 扩展加载了但什么都不干 | 计划里漏了，`CRXJS` 不会自动补 |
+| 2 | **未登录时取不到 WBI 密钥** | 所有需签名的接口全废 | `nav` 未登录时返回 `code=-101`，但响应里**照样带 `wbi_img`**；`get()` 因为 `code!==0` 把整个 `data` 丢了 |
+| 3 | **页面桥自回声** | 所有 B 站请求都返回 null | `window.postMessage` 会把消息派发回同一 window，content script 自己的**请求**也被自己的监听器收到；监听器只用 `__ab`+`id` 过滤，请求消息恰好也带这两个字段 → **每次请求立刻 resolve 成 null** |
+| 4 | **视频页 DOM 读不到评论** | 视频页一条评论都抽不到 | 评论在 **closed shadow root** 里，页面脚本都读不到 |
+| 5 | **推理模型 token 预算不足** | 判定链路静默失效 | 思考过程与答案共用预算，预算小了 `content` 是空串 |
+| 6 | **判定缓存只写不读** | 同一评论判两次，白花一次钱 | `PipelineService` 写了缓存但没查 |
+| 7 | **精判不分批** | 命中过多时一次发太多 | 没按 `MAX_BATCH_ITEMS=20` 切块 |
+| 8 | **冷启动采集没接进画像** | 首次运行没有画像 | `refresh` 只消费 `watchLog`，从不调 `collectColdStart` |
+| 9 | **`applyFold` 只认 `[data-rpid]`** | 搜索页/推荐流折叠完全不生效 | 那些页面的 id 是 bvid 不是 rpid |
+| 10 | **`applyMark` 判重查全页** | 页面上有一个标识后，后面全拿不到 | 判重范围错了 |
+| 11 | **评论判定请求没带 video** | 评论全部原样放行 | 后台拿不到视频上下文 → 空词表 → 粗筛永不命中 |
+
+### 真机验证脚本（都在 `scripts/`）
+
+| 脚本 | 用途 |
+| --- | --- |
+| `launch-browser.ps1` | 启动带 CDP 的 Chrome/Edge 独立实例 |
+| `load-extension.ts` | 用 CDP `Extensions.loadUnpacked` 装扩展 |
+| `verify-dist.ts` | **构建产物闸门**：manifest 引用的每个路径都必须在 dist 里存在 |
+| `capture-extension-log.ts` | 连上→刷新→抓扩展自己的控制台 |
+| `e2e-judge.ts` | 端到端：真实页面 + 真实 LLM → 评论被折叠/标识 |
+| `shot-popup.ts` | 打开并截图配置面板 |
+| `probe-*.ts` | 各类定点诊断（DOM 结构、窗口、API 参数组合） |
+
+> **Chrome 142+ 删除了 `DisableLoadExtensionCommandLineSwitch` 特性**，
+> `--load-extension` 在稳定版彻底失效。唯一可行的自动化路径是 CDP 的
+> `Extensions.loadUnpacked`，需要 `--enable-unsafe-extension-debugging`。
 
 ---
 

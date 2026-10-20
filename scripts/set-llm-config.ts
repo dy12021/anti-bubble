@@ -85,8 +85,26 @@ class Cdp {
 }
 
 async function main(): Promise<void> {
-  const targets = await listTargets();
-  const sw = targets.find((t) => t.type === 'service_worker');
+  let targets = await listTargets();
+  let sw = targets.find((t) => t.type === 'service_worker');
+
+  // MV3 的 service worker 是懒加载的，闲置 30 秒就休眠。
+  // 找不到它的时候，通过刷新页面唤醒——content script 会发消息给后台，
+  // 消息一到，service worker 就被拉起来了。
+  if (!sw) {
+    console.log('service worker 在睡，先刷新页面唤醒它…');
+    const page = targets.find((t) => t.type === 'page');
+    if (page) {
+      const pc = await Cdp.connect(page.webSocketDebuggerUrl);
+      await pc.send('Page.enable');
+      await pc.send('Page.reload', { ignoreCache: true });
+      await new Promise((r) => setTimeout(r, 3000));
+      pc.close();
+    }
+    targets = await listTargets();
+    sw = targets.find((t) => t.type === 'service_worker');
+  }
+
   if (!sw) {
     console.error('找不到 service worker 目标。扩展没加载？');
     process.exit(1);

@@ -86,5 +86,34 @@ implementation subagents in parallel (conflicts)」，本次改为**按文件所
     ① 判定缓存只写不读 → PipelineService 先查缓存，只判未命中的（tests/unit/pipeline-cache.test.ts）
     ② 精判不分批 → 按 MAX_BATCH_ITEMS=20 切块，一批失败只降级那一批
   - 另修 controller 自己的 import 路径笔误（./pipeline/ → ../pipeline/）
+- Task E (适配器与动作层): complete (commit 9fd88e7)
+  - agent 报告 taskE-report.md。**找出计划里两个真 bug 并修正**：
+    ① applyFold/applyMark 原本只认 [data-rpid]，而搜索页/推荐流的 id 是 bvid，
+       照抄会让两个页面的折叠功能完全不生效 → 改为按链接里的 bvid 反查卡片
+    ② applyMark 判重查的是全页，页面上有任意一个标识后，后面所有内容都拿不到标识
+       → 改为按条目判重
+  - controller 另接通反向推荐链路（content 要词表 → 页面上下文搜 B 站 → 后台判立场 → 渲染）
+
+## 真机验证阶段（2026-10-20 下午）
+
+单测全绿之后，controller 用 CDP 驱动真实 Chrome/Edge 做端到端，抓到 **11 个单测抓不到的问题**。
+全部已修，完整清单见 `docs/superpowers/specs/2026-10-20-anti-bubble-design.md` §10.1。
+
+三个致命的：
+1. manifest 漏声明 content_scripts → 扩展加载了但什么都不干
+2. 页面桥自回声 → 所有 B 站请求返回 null（postMessage 派发回同一 window，
+   监听器把自家请求当成了响应）
+3. 视频页评论在 closed shadow root 里 → DOM 路线走不通，改成 API + 自渲染评论区
+
+新增 commits：
+- d74fdcf 视频页改用自有评论区 + 配置面板 + 推理模型 token 预算
+- 03a0214 修页面桥自回声
+
+新增验证脚本（scripts/）：launch-browser / load-extension / verify-dist /
+capture-extension-log / e2e-judge / shot-popup / probe-* / close-small-windows
+
+**用户截图里那个「小窗叠大窗」**：已查清是 Edge 把 www.bilibili.com 当 PWA 开的独立小窗
+（524×364，windowId=undefined），与扩展无关——扩展在该页注入元素数为 0、样式为 0；
+且刷新主页面后小窗不再出现。已加 scripts/close-small-windows.ts 清理。
 
 
