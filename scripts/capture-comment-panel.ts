@@ -1,8 +1,14 @@
 /**
- * 抓一张「自有评论区」面板的实拍图（滚到面板位置再截）。
+ * 抓一张扩展 UI 的实拍图（滚到指定区块再截）。
+ *
+ * 用法：
+ *   SELECTOR='.ab-comments'  OUT='e2e-comment-panel.png' node ... capture-ui.ts
+ *   SELECTOR='.ab-recommend' OUT='e2e-recommend.png'     node ... capture-ui.ts
  */
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
+const SELECTOR = process.env.SELECTOR ?? '.ab-comments';
+const OUT = process.env.OUT ?? 'D:\\coding\\anti-bubble\\docs\\e2e-ui.png';
 
 async function httpJson(path: string): Promise<any> {
   const res = await fetch(`http://${HOST}:${PORT}${path}`);
@@ -70,25 +76,22 @@ async function main(): Promise<void> {
   await new Promise((r) => setTimeout(r, 1500));
 
   const info = await cdp.eval(`(() => {
-    const panel = document.querySelector('.ab-comments');
+    const panel = document.querySelector(${JSON.stringify(SELECTOR)});
     if (!panel) return JSON.stringify({ found: false });
     panel.scrollIntoView({ block: 'center' });
     return JSON.stringify({
       found: true,
-      comments: panel.querySelectorAll('.ab-comment').length,
-      status: (panel.querySelector('.ab-comments-status')||{}).textContent || '',
-      count: (panel.querySelector('.ab-comments-count')||{}).textContent || '',
-      first: Array.from(panel.querySelectorAll('.ab-comment-text')).slice(0,3).map(e => e.textContent.trim().slice(0,40)),
+      text: (panel.textContent || '').trim().slice(0, 300),
     });
   })()`);
   console.log(info);
   await new Promise((r) => setTimeout(r, 2000));
-  await cdp.eval(`(() => { const p = document.querySelector('.ab-comments'); if (p) p.scrollIntoView({block:'start'}); window.scrollBy(0, -60); return 1; })()`);
+  await cdp.eval(`(() => { const p = document.querySelector(${JSON.stringify(SELECTOR)}); if (p) p.scrollIntoView({block:'start'}); window.scrollBy(0, -60); return 1; })()`);
   await new Promise((r) => setTimeout(r, 1500));
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
   const fs = await import('node:fs');
-  fs.writeFileSync('D:\\coding\\anti-bubble\\docs\\e2e-comment-panel.png', Buffer.from(shot.data, 'base64'));
-  console.log('截图: D:\\coding\\anti-bubble\\docs\\e2e-comment-panel.png');
+  fs.writeFileSync(OUT, Buffer.from(shot.data, 'base64'));
+  console.log('截图: ' + OUT);
   cdp.close();
 }
 

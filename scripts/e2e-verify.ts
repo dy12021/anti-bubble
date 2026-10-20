@@ -27,6 +27,7 @@ const PORT = process.env.CDP_PORT ?? '9333';
 const DIST = 'D:\\coding\\anti-bubble\\dist';
 const CONFIG_TOML = 'D:\\coding\\llm-quant\\config.toml';
 const PAGE = process.env.PAGE ?? 'search';
+const MODE = process.env.MODE ?? 'cocoon';
 const WAIT_S = Number(process.env.WAIT_S ?? 240);
 const QUERY = process.env.SEARCH_QUERY ?? '华为 手机';
 
@@ -148,19 +149,27 @@ async function main(): Promise<void> {
   const injected = await popupCdp.eval(`(async () => {
     await chrome.storage.local.set({ llmConfig: ${JSON.stringify(cfg)} });
     await chrome.storage.local.remove(['verdictCache', 'wordlistCache', 'blockedLog', 'profile']);
-    const st = await chrome.storage.local.get(['llmConfig']);
+    // 模式切换（cocoon=信息茧房 / anti=反信息茧房）
+    await new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: 'SET_SETTINGS', id: 'set-mode', payload: { settings: { mode: ${JSON.stringify(MODE)} } } },
+        () => { void chrome.runtime.lastError; resolve(null); },
+      );
+    });
+    const st = await chrome.storage.local.get(['llmConfig', 'settings']);
     const c = st['llmConfig'];
-    return JSON.stringify({ model: c.model, baseUrl: c.baseUrl, maxTokens: c.maxTokens, keyLen: (c.apiKey||'').length });
+    return JSON.stringify({ model: c.model, baseUrl: c.baseUrl, maxTokens: c.maxTokens, keyLen: (c.apiKey||'').length, mode: st['settings']?.mode });
   })()`);
   log('LLM 配置已注入: ' + injected);
   popupCdp.close();
   await browser.send('Target.closeTarget', { targetId: popupId });
 
   // ③ 打开目标页
+  const videoBvid = process.env.VIDEO_BVID ?? 'BV1GJ411x7h7';
   const url =
     PAGE === 'search' ? `https://search.bilibili.com/all?keyword=${encodeURIComponent(QUERY)}`
     : PAGE === 'feed' ? 'https://www.bilibili.com/'
-    : 'https://www.bilibili.com/video/BV1GJ411x7h7';
+    : `https://www.bilibili.com/video/${videoBvid}`;
 
   const targets = (await httpJson('/json/list')) as any[];
   const page = targets.find((t) => t.type === 'page' && !t.url.startsWith('chrome-extension://'));
@@ -184,9 +193,11 @@ async function main(): Promise<void> {
       notices: document.querySelectorAll('[data-ab-prefix="ab-notice"]').length,
       marks: document.querySelectorAll('[data-ab-prefix="ab-mark"]').length,
       hidden: Array.from(document.querySelectorAll('.bili-video-card')).filter(e => e.style.display === 'none').length,
+      recBlock: !!document.querySelector('[data-ab-prefix="ab-recommend"]'),
+      recItems: document.querySelectorAll('[data-ab-prefix="ab-recommend-item"]').length,
     })`)) as string);
     log(`  t+${(i + 1) * 10}s ${JSON.stringify(state)}`);
-    if (state.notices > 0 || state.marks > 0) break;
+    if (state.notices > 0 || state.marks > 0 || state.recItems > 0) break;
   }
 
   // ⑤ 扩展日志
@@ -218,6 +229,7 @@ async function main(): Promise<void> {
       wordlists: Object.values(wl).slice(0,2).map(v => ({
         subjectKey: v.subjectKey, patternCount: (v.patterns||[]).length,
         patterns: (v.patterns||[]).slice(0,12), stance: String(v.stance||'').slice(0,160),
+        oppositeKeywords: (v.oppositeKeywords||[]).slice(0,8),
       })),
       verdictCacheCount: Object.keys(vc).length, verdictActions: acts,
       blockedLogCount: bl.length,
@@ -229,22 +241,53 @@ async function main(): Promise<void> {
   p2cdp.close();
   await browser.send('Target.closeTarget', { targetId: p2 });
 
-  // ⑦ 撤销验证
+  // ⑦ 撤销验证：折叠走「仍要显示」按钮，标识走「点标签」
   const revoke = await cdp.eval(`(() => {
-    const notices = Array.from(document.querySelectorAll('[data-ab-prefix="ab-notice"]'));
-    if (!notices.length) return JSON.stringify({ found: false });
-    const n = notices[0];
-    const id = n.getAttribute('data-item-id');
-    const btn = n.querySelector('[data-ab-prefix="ab-revoke"]');
-    const hiddenBefore = Array.from(document.querySelectorAll('.bili-video-card')).filter(e => e.style.display === 'none').length;
-    const reason = (n.textContent || '').trim().slice(0, 80);
-    if (btn) btn.click();
-    const hiddenAfter = Array.from(document.querySelectorAll('.bili-video-card')).filter(e => e.style.display === 'none').length;
-    return JSON.stringify({ found: true, id, reason, hasRevoke: !!btn, hiddenBefore, hiddenAfter,
-      noticeGone: !document.querySelector('[data-ab-prefix="ab-notice"][data-item-id="' + id + '"]'),
-      all: notices.map(x => (x.textContent||'').trim().slice(0,50)) });
+    const out = {};
+    const notice = document.querySelector('[data-ab-prefix="ab-notice"]');
+    if (notice) {
+      const id = notice.getAttribute('data-item-id');
+      const btn = notice.querySelector('[data-ab-prefix="ab-revoke"]');
+      const hiddenBefore = Array.from(document.querySelectorAll('.bili-video-card')).filter(e => e.style.display === 'none').length;
+      const reason = (notice.textContent || '').trim().slice(0, 80);
+      if (btn) btn.click();
+      const hiddenAfter = Array.from(document.querySelectorAll('.bili-video-card')).filter(e => e.style.display === 'none').length;
+      out.fold = { found: true, id, reason, hasRevoke: !!btn, hiddenBefore, hiddenAfter,
+        noticeGone: !document.querySelector('[data-ab-prefix="ab-notice"][data-item-id="' + id + '"]') };
+    } else {
+      out.fold = { found: false };
+    }
+
+    const mark = document.querySelector('[data-ab-prefix="ab-mark"]');
+    if (mark) {
+      const id = mark.getAttribute('data-item-id');
+      const text = (mark.textContent || '').trim().slice(0, 50);
+      mark.click();
+      out.mark = { found: true, id, text, gone: !document.querySelector('[data-ab-prefix="ab-mark"][data-item-id="' + id + '"]') };
+    } else {
+      out.mark = { found: false };
+    }
+
+    const rec = document.querySelector('[data-ab-prefix="ab-recommend"]');
+    if (rec) {
+      out.recommend = {
+        found: true,
+        title: (rec.querySelector('.ab-recommend-title')||{}).textContent || '',
+        items: Array.from(rec.querySelectorAll('[data-ab-prefix="ab-recommend-item"]')).map(r => ({
+          title: (r.querySelector('a')||{}).textContent || '',
+          reason: (r.querySelector('.ab-recommend-reason')||{}).textContent || '',
+          href: (r.querySelector('a')||{}).getAttribute?.('href') || '',
+        })),
+      };
+    } else {
+      const empty = document.querySelector('[data-ab-prefix="ab-recommend-empty"]');
+      out.recommend = empty
+        ? { found: false, emptyState: (empty.textContent || '').trim().slice(0, 60) }
+        : { found: false };
+    }
+    return JSON.stringify(out);
   })()`);
-  log('=== 撤销验证 ===\n' + revoke);
+  log('=== 撤销 / 推荐验证 ===\n' + revoke);
 
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
   const out = `D:\\coding\\anti-bubble\\docs\\e2e-${PAGE}.png`;
