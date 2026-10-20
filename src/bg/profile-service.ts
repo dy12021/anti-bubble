@@ -1,7 +1,7 @@
 import type { UserProfile, UserProfileInput, ContentItem } from '../shared/types';
 import type { LlmClient } from './llm/client';
 import { getProfile, saveProfile, clearProfile, getJson, setJson } from './storage';
-import { STORAGE_KEYS } from '../shared/constants';
+import { STORAGE_KEYS, WATCH_SAMPLE_SECONDS } from '../shared/constants';
 import { induceProfile } from '../profile/induce';
 import { mergeSamples } from '../profile/merge';
 import { buildRuleProfile } from '../profile/rules';
@@ -11,7 +11,7 @@ import { toSample } from '../profile/collect';
 export const PROFILE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /** 累计观看多少秒才记一条样本。过滤误点即退。 */
-export const WATCH_SAMPLE = 30;
+export const WATCH_SAMPLE = WATCH_SAMPLE_SECONDS;
 
 /** watchLog 最多保留多少条样本。 */
 const MAX_WATCH_LOG = 1000;

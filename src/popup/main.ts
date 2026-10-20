@@ -91,6 +91,9 @@ async function loadSettings(): Promise<void> {
     const key = input.dataset['page'] as keyof Settings['enabledPages'];
     input.checked = s.enabledPages[key] !== false;
   }
+  el<HTMLInputElement>('antiTriggerSeconds').value = String(
+    s.antiTriggerSeconds ?? 60,
+  );
 }
 
 function bindSettings(): void {
@@ -117,6 +120,11 @@ function bindSettings(): void {
       save({ enabledPages: enabledPages as Settings['enabledPages'] });
     });
   }
+  el<HTMLInputElement>('antiTriggerSeconds').addEventListener('change', (e) => {
+    const v = Number((e.target as HTMLInputElement).value);
+    // 下限 5 秒：低于这个值等于「一进页面就推」，违背触发条件的设计意图
+    save({ antiTriggerSeconds: Number.isFinite(v) ? Math.max(5, Math.round(v)) : 60 });
+  });
 }
 
 /* --------------------------- LLM 配置 --------------------------- */

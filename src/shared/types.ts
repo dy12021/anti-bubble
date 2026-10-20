@@ -120,6 +120,14 @@ export interface Settings {
   collectHistory: boolean;
   /** 判定置信度阈值，低于此值按 pass 处理 */
   confidenceThreshold: number;
+  /**
+   * 反向推荐的触发条件：视频累计观看多少秒之后才推相反观点。
+   *
+   * 默认 60 秒（见 constants 的 ANTI_TRIGGER_WATCH_SECONDS）。
+   * 设计原话是「打开一个表达观点的视频**一段时间后**」——
+   * 一进页面就推就成了「换个姿势的推荐流」，不是打破信息茧房。
+   */
+  antiTriggerSeconds?: number;
 }
 
 /**

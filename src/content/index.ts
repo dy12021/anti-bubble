@@ -7,10 +7,12 @@ import { CommentPanel } from './comment-panel';
 import type { RecommendItem } from '../actions/recommend';
 import { resolveRecommendationAnchor, renderNoOpposition } from '../actions/recommend';
 import { PageController } from './controller';
+import { WatchTracker, videoProgressSeconds } from './watch';
 import { videoSubject } from '../pipeline/subject';
 import { MSG } from '../shared/messages';
-import type { Settings } from '../shared/types';
+import type { Settings, ContentItem } from '../shared/types';
 import type { VideoContext } from '../pipeline/types';
+import { ANTI_TRIGGER_WATCH_SECONDS, WATCH_SAMPLE_SECONDS } from '../shared/constants';
 
 /**
  * 注入页面上下文脚本。
@@ -101,6 +103,9 @@ async function loadVideoContext(bvid: string): Promise<VideoContext | null> {
       description: video.description ? video.description.slice(0, 2000) : undefined,
       summary,
       aid: typeof video.aid === 'number' ? video.aid : undefined,
+      // 画像样本要用 UP 主与分区
+      author: video.author ?? undefined,
+      category: video.tname ?? undefined,
     };
   } catch {
     return domVideoContext(bvid);
@@ -108,20 +113,113 @@ async function loadVideoContext(bvid: string): Promise<VideoContext | null> {
 }
 
 /**
- * API 拿不到视频信息时的兜底：直接从 DOM 读标题。
+ * API 拿不到视频信息时的兜底：直接从 DOM 读。
  *
  * 视频标题就摆在页面上（`.video-title`）。拿不到简介和 AI 总结没关系——
  * **有标题就够生成词表了**，总比「没有语境 → 全部放行」强。
  * 之前这里是直接返回 null，于是 API 一抖（风控/未登录）整页评论就都不判了。
+ *
+ * 顺带把 UP 主和标签也读出来：画像样本要靠它们做分区粗判。
  */
 function domVideoContext(bvid: string): VideoContext | null {
   try {
     const title = (document.querySelector('.video-title')?.textContent ?? '').trim();
     if (!title) return null;
-    return { bvid, title };
+    const author = (document.querySelector('.up-name')?.textContent ?? '').trim();
+    // 页面上的标签（人类/科幻/人工智能…）比分区更细，做画像粗判够用
+    const tags = Array.from(document.querySelectorAll('.tag'))
+      .map((t) => (t.textContent ?? '').trim())
+      .filter((t) => t.length > 0 && t.length < 12)
+      .slice(0, 3);
+    return {
+      bvid,
+      title,
+      ...(author ? { author } : {}),
+      ...(tags.length ? { category: tags.join('、') } : {}),
+    };
   } catch {
     return null;
   }
+}
+
+/**
+ * 视频页的观看时长追踪：驱动两件事。
+ *
+ * 1. **增量画像**：看够 WATCH_SAMPLE_SECONDS 秒就记一条样本，
+ *    画像跟着浏览行为长（不是只有冷启动那一次）。
+ * 2. **反向推荐的触发**：看够 ANTI_TRIGGER_WATCH_SECONDS 秒才推相反观点。
+ */
+function startWatchTracking(
+  video: VideoContext,
+  settings: Settings | null,
+  ctrl: PageController,
+): void {
+  if (!settings) return;
+
+  /** 把这个视频作为一条内容单元，供画像取样。 */
+  const item: ContentItem = {
+    kind: 'video',
+    id: video.bvid,
+    text: video.title,
+    author: video.author ?? '',
+    meta: { category: video.category ?? '' },
+    context: { page: 'video', videoId: video.bvid, videoTitle: video.title },
+  };
+
+  let recorded = false;
+  let warnedNoVideo = false;
+  console.info(
+    `[anti-bubble] 开始追踪观看时长（阈值 ${
+      settings.antiTriggerSeconds ?? ANTI_TRIGGER_WATCH_SECONDS
+    } 秒）`,
+  );
+
+  const record = (seconds: number): void => {
+    if (recorded) return;
+    if (seconds < WATCH_SAMPLE_SECONDS) return;
+    recorded = true;
+    void send({
+      type: MSG.RECORD_WATCH,
+      id: 'watch',
+      payload: { item, watchSeconds: seconds },
+    });
+  };
+
+  const tracker = new WatchTracker({
+    // 阈值可配：默认 60 秒（设计文档的 ANTI_TRIGGER_WATCH_SECONDS）。
+    thresholdSeconds: Math.max(
+      5,
+      settings.antiTriggerSeconds ?? ANTI_TRIGGER_WATCH_SECONDS,
+    ),
+    // 用视频的实际播放进度当「观看时长」——比「页面可见了多少秒」准：
+    // 暂停了、或者只是挂在后台，就不该算在看这个视频。
+    readWatchSeconds: () => {
+      const s = videoProgressSeconds(document);
+      if (s === null && !warnedNoVideo) {
+        warnedNoVideo = true;
+        console.warn(
+          '[anti-bubble] 页面里没有正在播放的视频，观看时长无法计算（反向推荐不会触发）',
+        );
+      }
+      return s;
+    },
+    onSecond: (seconds) => record(seconds),
+    onHidden: (seconds) => record(seconds),
+    onThreshold: (seconds) => {
+      console.info(`[anti-bubble] 已观看 ${seconds} 秒，开始找相反观点`);
+      void fetchOppositeRecommendations(video, settings).then(({ items, recalled }) => {
+        const anchor = resolveRecommendationAnchor(document);
+        if (!anchor) return;
+        if (items.length > 0) {
+          ctrl.showRecommendations(anchor, items);
+        } else if (recalled) {
+          // 召回到了候选但没选出相反观点：说一句，别让用户以为插件坏了
+          renderNoOpposition(document, anchor);
+        }
+      });
+    },
+  });
+  tracker.start();
 }
 
 /** 从 URL 里取当前视频的 bvid。 */
@@ -307,20 +405,14 @@ async function main(): Promise<void> {
     void mountCommentPanel(video, settings, send, ctrl);
   }
 
-  // 反向推荐：插在视频信息区下面（整宽独立区块）。
-  // 插在标题**旁边**会破坏布局——B 站标题的父级是 flex 行，
-  // 塞进去会被挤成第三列、压在播放器上面。
+  // 反向推荐：**看够一段时间才推**。
+  //
+  // 设计原话是「打开一个表达观点的视频**一段时间后**，自动推荐表达相反观点的视频」。
+  // 一进页面就推，那就成了「换个姿势的推荐流」——用户正想看这个，
+  // 你立刻塞一堆相反的过去，既打断体验也谈不上打破茧房。
+  // 阈值 ANTI_TRIGGER_WATCH_SECONDS = 60 秒。
   if (video) {
-    void fetchOppositeRecommendations(video, settings).then(({ items, recalled }) => {
-      const anchor = resolveRecommendationAnchor(document);
-      if (!anchor) return;
-      if (items.length > 0) {
-        ctrl.showRecommendations(anchor, items);
-      } else if (recalled) {
-        // 召回到了候选但没选出相反观点：说一句，别让用户以为插件坏了
-        renderNoOpposition(document, anchor);
-      }
-    });
+    startWatchTracking(video, settings, ctrl);
   }
 
   // 调试用：验证登录态与页面桥

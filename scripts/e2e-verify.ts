@@ -152,7 +152,17 @@ async function main(): Promise<void> {
     // 模式切换（cocoon=信息茧房 / anti=反信息茧房）
     await new Promise((resolve) => {
       chrome.runtime.sendMessage(
-        { type: 'SET_SETTINGS', id: 'set-mode', payload: { settings: { mode: ${JSON.stringify(MODE)} } } },
+        {
+          type: 'SET_SETTINGS', id: 'set-mode',
+          payload: {
+            settings: {
+              mode: ${JSON.stringify(MODE)},
+              ...(${JSON.stringify(MODE)} === 'anti'
+                ? { antiTriggerSeconds: Number(${JSON.stringify(process.env.ANTI_TRIGGER_S ?? '15')}) }
+                : {}),
+            },
+          },
+        },
         () => { void chrome.runtime.lastError; resolve(null); },
       );
     });
@@ -184,8 +194,26 @@ async function main(): Promise<void> {
 
   // ④ 轮询等判定
   let state: any = null;
+  const trigger = Number(process.env.ANTI_TRIGGER_S ?? '15');
   for (let i = 0; i < WAIT_S / 10; i++) {
     await new Promise((r) => setTimeout(r, 10000));
+    // 模拟「用户已经看了一会儿」。
+    //
+    // 自动化环境里标签页是 hidden 的，Chrome 会把后台媒体的播放
+    // 限速到 1/25 左右，所以等真机 60 秒根本不现实。
+    // 直接把播放进度拖到阈值之后，触发器就会到位——
+    // 验证的是「到点会不会触发」，不是「播放速率」。
+    if (MODE === 'anti') {
+      const seekRes = await cdp.eval(`(() => {
+        const v = document.querySelector('video');
+        if (!v) return 'no-video';
+        v.muted = true;
+        try { void v.play(); } catch (e) {}
+        if (v.currentTime < ${trigger + 15}) v.currentTime = ${trigger + 15};
+        return 'ct=' + v.currentTime + ' paused=' + v.paused + ' rs=' + v.readyState;
+      })()`);
+      log(`  拖进度: ${seekRes}`);
+    }
     state = JSON.parse((await cdp.eval(`JSON.stringify({
       url: location.href,
       cards: document.querySelectorAll('.bili-video-card').length,
@@ -218,13 +246,19 @@ async function main(): Promise<void> {
   const l2 = (await httpJson('/json/list')) as any[];
   const p2cdp = await Cdp.connect(l2.find((t) => t.id === p2)!.webSocketDebuggerUrl);
   const bg = await p2cdp.eval(`(async () => {
-    const st = await chrome.storage.local.get(['wordlistCache','verdictCache','blockedLog','profile']);
+    const st = await chrome.storage.local.get(['wordlistCache','verdictCache','blockedLog','profile','watchLog','settings']);
     const wl = st['wordlistCache'] ?? {};
     const vc = st['verdictCache'] ?? {};
     const bl = st['blockedLog'] ?? [];
     const acts = {};
     for (const v of Object.values(vc)) acts[v.action] = (acts[v.action]||0)+1;
+    const watchLog = st['watchLog'] ?? [];
     return JSON.stringify({
+      mode: st['settings']?.mode ?? null,
+      watchLogCount: Array.isArray(watchLog) ? watchLog.length : 0,
+      watchLogSample: Array.isArray(watchLog) ? watchLog.slice(0,3).map(s => ({
+        id: s.id, title: String(s.title||'').slice(0,40), watchSeconds: s.watchSeconds, category: s.category,
+      })) : [],
       wordlistCount: Object.keys(wl).length,
       wordlists: Object.values(wl).slice(0,2).map(v => ({
         subjectKey: v.subjectKey, patternCount: (v.patterns||[]).length,

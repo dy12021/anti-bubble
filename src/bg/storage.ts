@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from '../shared/constants';
+import { STORAGE_KEYS, ANTI_TRIGGER_WATCH_SECONDS } from '../shared/constants';
 import type { Settings, SettingsPatch, UserProfile, LlmConfig } from '../shared/types';
 
 /**
@@ -48,6 +48,7 @@ export function defaultSettings(): Settings {
     masterEnabled: true,
     collectHistory: true,
     confidenceThreshold: 0.7,
+    antiTriggerSeconds: ANTI_TRIGGER_WATCH_SECONDS,
   };
 }
 

@@ -173,6 +173,24 @@ describe('列表页词表', () => {
     expect(p.user).toContain('相反');
   });
 
+  /**
+   * 回归防护：对立检索词必须**带立场**。
+   *
+   * 只给主题词（「人工智能」「AI 应用」）的话，搜回来的是同主题内容，
+   * 不一定相反 —— 精排筛下来往往一条都没有，反向推荐就永远出不来东西。
+   */
+  it('要求对立检索词带立场、不许只给主题词', () => {
+    const p = buildListWordlistPrompt(list, profile, 'anti');
+    expect(p.system).toContain('词本身必须**带立场**');
+    expect(p.system).toContain('不要只给主题词或品类词');
+  });
+
+  it('视频页的对立检索词也要求带立场', () => {
+    const p = buildWordlistPrompt({ title: 't' }, profile, 'anti');
+    expect(p.system).toContain('词本身必须**带立场**');
+    expect(p.system).toContain('不要只给主题词或品类词');
+  });
+
   it('buildSubjectPrompt 按语境类型分发', () => {
     const videoPrompt = buildSubjectPrompt(
       videoSubject({ bvid: 'BV1', title: '独特视频标题QQQ' }),

@@ -27,6 +27,19 @@ describe('反向推荐的精排', () => {
     expect(p.user).toContain('1. [BV1aa411c7mD]');
   });
 
+  /**
+   * 回归防护：「相反」不能等同于「讨论同一个话题」。
+   *
+   * 早先的 prompt 只说「不同话题的不要输出」，模型就把
+   * 「大模型三巨头集体踩刹车」这种**明确反驳**当前视频的候选也毙了——
+   * 它讲的也是同一个话题，但立场是反的。
+   */
+  it('明说「质疑/反驳当前主张」也算相反', () => {
+    const p = buildOppositionPrompt({ title: '当前', stance: 'AI 很危险' }, CANDIDATES);
+    expect(p.system).toContain('质疑、反驳、修正');
+    expect(p.system).toContain('什么不算');
+  });
+
   it('按序号取候选', async () => {
     const c = client(JSON.stringify({
       results: [{ id: 2, reason: '它认为 AI 会取代人类工作' }],

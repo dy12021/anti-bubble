@@ -33,6 +33,12 @@ export const MAX_BATCH_ITEMS = 20;
 /** 反向推荐的触发阈值：视频页累计观看秒数。 */
 export const ANTI_TRIGGER_WATCH_SECONDS = 60;
 
+/**
+ * 累计观看多少秒才记一条画像样本。
+ * 过滤误点即退（点开看了一眼就关掉的不算「看过」）。
+ */
+export const WATCH_SAMPLE_SECONDS = 30;
+
 /** B 站风控阈值：连续请求间隔（毫秒）。5-8 次/分钟即会被拦。 */
 export const BILI_REQUEST_INTERVAL_MS = 1200;
 

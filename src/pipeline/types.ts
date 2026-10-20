@@ -14,6 +14,10 @@ export interface VideoMeta {
   summary?: string;
   /** 视频 aid（评论接口的 oid）。从 view 接口拿到后带上，省一次请求。 */
   aid?: number;
+  /** UP 主昵称。画像样本要用。 */
+  author?: string;
+  /** 分区名（如「科技·数码」）。画像样本按分区粗判要用。 */
+  category?: string;
   /**
    * 评论区样本（若干条真实评论的片段）。
    *

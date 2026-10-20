@@ -46,6 +46,17 @@
       <label class="switch-row"><input type="checkbox" data-page="search" /><span class="switch-label">搜索页</span></label>
       <label class="switch-row"><input type="checkbox" data-page="video" /><span class="switch-label">视频页评论区</span></label>
       <label class="switch-row"><input type="checkbox" data-page="feed" /><span class="switch-label">首页推荐流</span></label>
+
+      <label class="field">
+        <span class="field-label">
+          看多久后推荐相反观点（秒）
+          <span class="hint inline">
+            只在「反信息茧房」模式生效。一进页面就推就成了换个姿势的推荐流——
+            等你真看进去了再打断，才叫打破茧房。
+          </span>
+        </span>
+        <input type="number" id="antiTriggerSeconds" min="5" step="5" value="60" />
+      </label>
     </section>
 
     <!-- LLM 配置 -->
