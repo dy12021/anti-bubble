@@ -1,6 +1,7 @@
 import { createPageBridge } from './page-bridge';
 import { BiliClient } from '../bili/client';
 import { fetchNav, fetchVideo, fetchVideoIdByBvid, fetchConclusion } from '../bili/api';
+import { collectColdStart } from '../profile/collect';
 import { PageController } from './controller';
 import { MSG } from '../shared/messages';
 import type { Settings } from '../shared/types';
@@ -86,12 +87,48 @@ function currentBvid(): string | null {
   return m ? m[1]! : null;
 }
 
+/**
+ * 冷启动：拉取观看历史/收藏夹，转换成样本后交给后台归纳。
+ *
+ * 必须在这里做——采集需要 B 站登录态，只有页面上下文能拿到 Cookie。
+ * 后台（service worker）发不了 B 站请求。
+ *
+ * 已经有画像时跳过，避免每次打开页面都拉一遍。
+ */
+async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
+  if (!settings) return;
+  if (!settings.collectHistory) return;
+  if (!settings.masterEnabled) return;
+
+  const resp = (await send({ type: MSG.GET_PROFILE, id: 'cold' })) as {
+    ok?: boolean; data?: { updatedAt?: string; sampleCount?: number } | null;
+  } | null;
+  const profile = resp?.ok ? resp.data : null;
+  if (profile && (profile.sampleCount ?? 0) > 0) return;
+
+  try {
+    const bili = new BiliClient({ getJson });
+    const samples = await collectColdStart(bili, { includeHistory: settings.collectHistory });
+    if (samples.length === 0) return;
+    await send({
+      type: MSG.SYNC_PROFILE_SAMPLES,
+      id: 'cold-sync',
+      payload: { samples },
+    });
+  } catch {
+    // 采集失败不该影响浏览
+  }
+}
+
 async function main(): Promise<void> {
   const resp = (await send({
     type: MSG.GET_SETTINGS, id: 'init',
   })) as { ok?: boolean; data?: Settings } | null;
 
   const settings = resp?.ok && resp.data ? resp.data : null;
+
+  // 冷启动采集放后台跑，不阻塞首次渲染
+  void coldStartIfNeeded(settings);
 
   // 视频上下文要在发判定请求前拿到（后台拿不到 B 站 cookie）
   const bvid = currentBvid();

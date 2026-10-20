@@ -9,6 +9,12 @@ export const MSG = {
   GET_PROFILE: 'GET_PROFILE',
   /** content → bg：重新归纳画像 */
   REFRESH_PROFILE: 'REFRESH_PROFILE',
+  /**
+   * content → bg：并入一批冷启动采集的样本并重新归纳。
+   * 采集发生在页面上下文（需要登录态），归纳发生在 service worker，
+   * 所以采集方把样本传过来由后台落库。
+   */
+  SYNC_PROFILE_SAMPLES: 'SYNC_PROFILE_SAMPLES',
   /** content → bg：记录用户看过的视频（增量画像） */
   RECORD_WATCH: 'RECORD_WATCH',
   /** content → bg：撤销某个判定 */

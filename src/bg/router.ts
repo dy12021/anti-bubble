@@ -1,5 +1,5 @@
 import { MSG, type MsgRequest, type MsgResponse } from '../shared/messages';
-import type { ContentItem, LlmConfig, Mode, SettingsPatch } from '../shared/types';
+import type { ContentItem, LlmConfig, Mode, SettingsPatch, UserProfileInput } from '../shared/types';
 import {
   getSettings, saveSettings, getProfile, clearProfile,
   getLlmConfig, saveLlmConfig, getWhitelist, addToWhitelist,
@@ -108,6 +108,18 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         const client = createLlmClient(cfg);
         const out = await client.complete('回复「ok」两个字即可。', { maxTokens: 16 });
         return { id, ok: true, data: { output: out } };
+      }
+
+      case MSG.SYNC_PROFILE_SAMPLES: {
+        const samples =
+          (req.payload as { samples?: UserProfileInput[] })?.samples ?? [];
+        const cfg = await getLlmConfig();
+        if (!cfg) return { id, ok: false, error: '尚未配置 LLM，无法归纳画像' };
+        const client = createLlmClient(cfg);
+        const svc = new ProfileService(client);
+        const total = await svc.addSamples(samples);
+        const profile = await svc.refresh(client, { force: true });
+        return { id, ok: true, data: { profile, sampleCount: total } };
       }
 
       case MSG.GET_WHITELIST:
