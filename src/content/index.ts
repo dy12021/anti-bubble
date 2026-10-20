@@ -263,6 +263,23 @@ async function main(): Promise<void> {
       );
     }
   });
+
+  // 诊断：直接用桥打 nav，把**原始信封**打出来。
+  // BiliClient.get() 遇到 code !== 0 会返回 null，光看结果分不清
+  // 「页面桥断了（拿不到东西）」和「拿到了但确实没登录（code=-101）」。
+  void getJson('https://api.bilibili.com/x/web-interface/nav').then((raw) => {
+    const env = raw as
+      | { code?: number; message?: string; data?: { isLogin?: boolean; uname?: string } }
+      | null;
+    if (env && typeof env.code === 'number') {
+      console.info(
+        `[anti-bubble] nav 原始信封 code=${env.code} msg=${env.message ?? '-'} ` +
+          `isLogin=${env.data?.isLogin ?? '?'} uname=${env.data?.uname ?? '-'}`,
+      );
+    } else {
+      console.warn('[anti-bubble] nav 拿不到——页面桥可能没通（检查 content/page-fetch.js 是否注入成功）');
+    }
+  });
 }
 
 void main();

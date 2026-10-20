@@ -71,6 +71,7 @@ describe('createPageBridge', () => {
     handlers[0]!({
       data: {
         __ab: true,
+        kind: 'res',
         id: sent.id,
         ok: true,
         payload: { code: 0, message: '0', data: { isLogin: true } },
@@ -122,7 +123,7 @@ describe('createPageBridge', () => {
     const sent = postMessage.mock.calls[0]![0] as SentMessage;
 
     handlers[0]!({
-      data: { __ab: true, id: sent.id, ok: false, error: 'boom' },
+      data: { __ab: true, kind: 'res', id: sent.id, ok: false, error: 'boom' },
     } as unknown as MessageEvent);
 
     await expect(p).resolves.toBeNull();
@@ -136,7 +137,7 @@ describe('createPageBridge', () => {
     const p = request('https://api.bilibili.com/x/web-interface/nav');
 
     handlers[0]!({
-      data: { __ab: true, id: 'ab-not-mine', ok: true, payload: { code: 0 } },
+      data: { __ab: true, kind: 'res', id: 'ab-not-mine', ok: true, payload: { code: 0 } },
     } as unknown as MessageEvent);
 
     let settled = false;
@@ -171,7 +172,7 @@ describe('createPageBridge', () => {
     const p = request('https://api.bilibili.com/x/web-interface/nav');
     const sent = postMessage.mock.calls[0]![0] as SentMessage;
     handlers[0]!({
-      data: { __ab: true, id: sent.id, ok: true, payload: { code: 0 } },
+      data: { __ab: true, kind: 'res', id: sent.id, ok: true, payload: { code: 0 } },
     } as unknown as MessageEvent);
 
     await p;
@@ -191,6 +192,7 @@ describe('handlePageMessage', () => {
   it('非白名单 URL 直接回 blocked url，且不发请求', async () => {
     const { e, postMessage } = fakeEvent({
       __ab: true,
+      kind: 'req',
       id: 'ab-1',
       url: 'https://evil.example.com/steal',
     });
@@ -203,6 +205,7 @@ describe('handlePageMessage', () => {
     expect(postMessage).toHaveBeenCalledTimes(1);
     expect(postMessage.mock.calls[0]![0]).toEqual({
       __ab: true,
+      kind: 'res',
       id: 'ab-1',
       ok: false,
       error: 'blocked url',
@@ -213,6 +216,7 @@ describe('handlePageMessage', () => {
     const payload = { code: 0, message: '0', data: { isLogin: true } };
     const { e, postMessage } = fakeEvent({
       __ab: true,
+      kind: 'req',
       id: 'ab-2',
       url: 'https://api.bilibili.com/x/web-interface/nav',
     });
@@ -230,6 +234,7 @@ describe('handlePageMessage', () => {
     expect(postMessage).toHaveBeenCalledTimes(1);
     expect(postMessage.mock.calls[0]![0]).toEqual({
       __ab: true,
+      kind: 'res',
       id: 'ab-2',
       ok: true,
       payload,
@@ -239,6 +244,7 @@ describe('handlePageMessage', () => {
   it('fetch 抛错时回 ok:false 与错误消息', async () => {
     const { e, postMessage } = fakeEvent({
       __ab: true,
+      kind: 'req',
       id: 'ab-3',
       url: 'https://api.bilibili.com/x/web-interface/nav',
     });
@@ -251,6 +257,7 @@ describe('handlePageMessage', () => {
 
     expect(postMessage.mock.calls[0]![0]).toEqual({
       __ab: true,
+      kind: 'res',
       id: 'ab-3',
       ok: false,
       error: 'network down',

@@ -129,7 +129,8 @@ export class CommentPanel {
     return (this.opts.root as Document) ?? document;
   }
 
-  private async loadMore(): Promise<void> {
+  /** 加载下一页评论。对外公开，方便「加载更多」按钮与测试调用。 */
+  async loadMore(): Promise<void> {
     if (this.loading || this.done) return;
     this.loading = true;
     if (this.moreBtn) {

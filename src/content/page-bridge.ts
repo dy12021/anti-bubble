@@ -38,6 +38,8 @@ export const PAGE_FETCH_SCRIPT_ID = 'anti-bubble-page-fetch';
 /** content script → 页面脚本的请求。 */
 export interface PageRequestMessage {
   __ab: true;
+  /** 显式区分请求与响应——**必须有**，见 onMessage 里的说明。 */
+  kind: 'req';
   id: string;
   url: string;
 }
@@ -45,6 +47,7 @@ export interface PageRequestMessage {
 /** 页面脚本 → content script 的响应。 */
 export interface PageResponseMessage {
   __ab: true;
+  kind: 'res';
   id: string;
   ok: boolean;
   payload?: unknown;
@@ -105,7 +108,15 @@ export function createPageBridge(deps: PageBridgeDeps): (url: string) => Promise
 
   const onMessage = (e: MessageEvent): void => {
     const data = e.data as Partial<PageResponseMessage> | undefined;
-    if (!data || data.__ab !== true || typeof data.id !== 'string') return;
+    if (!data || data.__ab !== true) return;
+    // **必须区分请求与响应**：window.postMessage 会把消息派发回同一个 window，
+    // 所以 content script 自己发出的请求也会被这个监听器收到。
+    // 请求消息是 {__ab:true, kind:'req', id, url}，它同样有 __ab 和 id——
+    // 只靠 __ab+id 过滤会把**请求自己**当成响应，
+    // 于是每次请求都立刻 resolve 成 null，真实响应到达时已经没人等。
+    // 这个 bug 的症状是「所有 B 站请求都失败」，包括登录态检测。
+    if (data.kind !== 'res') return;
+    if (typeof data.id !== 'string') return;
     const settle = pending.get(data.id);
     if (!settle) return;
     // ok 为 false 时页面脚本报了错（blocked url / 网络异常 / JSON 解析失败）。
@@ -146,7 +157,7 @@ export function createPageBridge(deps: PageBridgeDeps): (url: string) => Promise
       }
 
       try {
-        deps.postMessage({ __ab: true, id, url } satisfies PageRequestMessage);
+        deps.postMessage({ __ab: true, kind: 'req', id, url } satisfies PageRequestMessage);
       } catch {
         settle(null);
       }
@@ -158,10 +169,10 @@ export function createPageBridge(deps: PageBridgeDeps): (url: string) => Promise
 /**
  * 页面脚本一侧的参考实现。`page-fetch.js` 与它保持同样的行为。
  *
- * - 只处理 `{ __ab: true, id, url }` 的消息；
+ * - 只处理 `{ __ab: true, kind: 'req', id, url }` 的消息；
  * - URL 必须在 B 站 API 白名单内，否则回 `blocked url`；
  * - fetch 带 `credentials: 'include'`，浏览器自动附上 SESSDATA；
- * - 成功回 `{ ok: true, payload }`，失败回 `{ ok: false, error }`。
+ * - 成功回 `{ kind:'res', ok: true, payload }`，失败回 `{ kind:'res', ok: false, error }`。
  */
 export function handlePageMessage(
   e: MessageEvent,
@@ -169,6 +180,8 @@ export function handlePageMessage(
 ): void {
   const data = e.data as Partial<PageRequestMessage> | undefined;
   if (!data || data.__ab !== true) return;
+  // 只认请求。响应消息（kind:'res'）也带 __ab 和 id，不加这行会互相触发。
+  if (data.kind !== 'req') return;
   if (typeof data.id !== 'string' || data.id.length === 0) return;
   if (typeof data.url !== 'string' || data.url.length === 0) return;
 
@@ -177,7 +190,7 @@ export function handlePageMessage(
   const post = resolvePoster(e);
 
   if (!BILI_API_PATTERN.test(url)) {
-    post({ __ab: true, id, ok: false, error: 'blocked url' } satisfies PageResponseMessage);
+    post({ __ab: true, kind: 'res', id, ok: false, error: 'blocked url' } satisfies PageResponseMessage);
     return;
   }
 
@@ -188,10 +201,10 @@ export function handlePageMessage(
         headers: { Accept: 'application/json' },
       });
       const payload = await res.json();
-      post({ __ab: true, id, ok: true, payload } satisfies PageResponseMessage);
+      post({ __ab: true, kind: 'res', id, ok: true, payload } satisfies PageResponseMessage);
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err);
-      post({ __ab: true, id, ok: false, error } satisfies PageResponseMessage);
+      post({ __ab: true, kind: 'res', id, ok: false, error } satisfies PageResponseMessage);
     }
   })();
 }

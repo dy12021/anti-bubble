@@ -15,8 +15,12 @@
  * 本文件是**纯 JavaScript**：它会在页面上下文里原样执行，不能带任何 TS 语法。
  *
  * 协议（与 src/content/page-bridge.ts 保持一致）：
- *   请求 { __ab: true, id, url }
- *   响应 { __ab: true, id, ok: true, payload } | { __ab: true, id, ok: false, error }
+ *   请求 { __ab: true, kind: 'req', id, url }
+ *   响应 { __ab: true, kind: 'res', id, ok: true, payload } | { ... ok: false, error }
+ *
+ * `kind` 必须有：window.postMessage 会把消息派发回同一个 window，
+ * 所以页面脚本会收到 content script 发出的**请求**，响应消息也会被对方收到。
+ * 不靠 kind 区分的话，两边会互相把对方的请求当成响应。
  */
 (function () {
   'use strict';
@@ -36,6 +40,8 @@
   window.addEventListener('message', function (e) {
     var data = e.data;
     if (!data || data.__ab !== true) return;
+    // 只认请求，忽略响应（否则会把自己的响应再当请求处理）
+    if (data.kind !== 'req') return;
     if (typeof data.id !== 'string' || !data.id) return;
     if (typeof data.url !== 'string' || !data.url) return;
 
@@ -43,7 +49,7 @@
     var url = data.url;
 
     if (!BILI_API_PATTERN.test(url)) {
-      post({ __ab: true, id: id, ok: false, error: 'blocked url' });
+      post({ __ab: true, kind: 'res', id: id, ok: false, error: 'blocked url' });
       return;
     }
 
@@ -56,11 +62,11 @@
         return res.json();
       })
       .then(function (payload) {
-        post({ __ab: true, id: id, ok: true, payload: payload });
+        post({ __ab: true, kind: 'res', id: id, ok: true, payload: payload });
       })
       .catch(function (err) {
         var message = err && err.message ? err.message : String(err);
-        post({ __ab: true, id: id, ok: false, error: message });
+        post({ __ab: true, kind: 'res', id: id, ok: false, error: message });
       });
   });
 })();
