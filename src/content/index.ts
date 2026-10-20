@@ -2,6 +2,8 @@ import { createPageBridge } from './page-bridge';
 import { BiliClient } from '../bili/client';
 import { fetchNav, fetchVideo, fetchVideoIdByBvid, fetchConclusion } from '../bili/api';
 import { collectColdStart } from '../profile/collect';
+import { recallOpposite } from '../recommend/recall';
+import type { RecommendItem } from '../actions/recommend';
 import { PageController } from './controller';
 import { MSG } from '../shared/messages';
 import type { Settings } from '../shared/types';
@@ -120,6 +122,49 @@ async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
   }
 }
 
+/**
+ * 反向推荐：三步走。
+ *
+ * 1. 向后台要动态词表（里面有立场摘要 + 对立检索词）
+ * 2. **在页面上下文**用检索词搜 B 站（后台拿不到 cookie，搜不了）
+ * 3. 把候选交给后台做 LLM 立场判定，拿回结果渲染
+ *
+ * 任何一步失败都静默放弃——推荐是锦上添花，不该影响主流程。
+ */
+async function fetchOppositeRecommendations(
+  video: VideoContext | null,
+  settings: Settings | null,
+): Promise<RecommendItem[]> {
+  if (!video || !settings) return [];
+  if (settings.mode !== 'anti') return [];
+
+  // ① 要词表
+  const wlResp = (await send({
+    type: MSG.GET_WORDLIST, id: 'wl',
+    payload: { video, mode: settings.mode },
+  })) as { ok?: boolean; data?: { oppositeKeywords?: string[] } } | null;
+
+  const keywords = wlResp?.ok ? (wlResp.data?.oppositeKeywords ?? []) : [];
+  if (keywords.length === 0) return [];
+
+  // ② 在页面上下文搜 B 站
+  try {
+    const bili = new BiliClient({ getJson });
+    const candidates = await recallOpposite(bili, keywords);
+    if (candidates.length === 0) return [];
+
+    // ③ 交给后台判立场
+    const judgeResp = (await send({
+      type: MSG.GET_RECOMMENDATIONS, id: 'rec',
+      payload: { video, candidates },
+    })) as { ok?: boolean; data?: { items?: RecommendItem[] } } | null;
+
+    return judgeResp?.ok ? (judgeResp.data?.items ?? []) : [];
+  } catch {
+    return [];
+  }
+}
+
 async function main(): Promise<void> {
   const resp = (await send({
     type: MSG.GET_SETTINGS, id: 'init',
@@ -145,6 +190,18 @@ async function main(): Promise<void> {
   });
 
   await ctrl.start();
+
+  // 反向推荐：插在视频标题后面
+  if (video) {
+    void fetchOppositeRecommendations(video, settings).then((items) => {
+      if (items.length === 0) return;
+      const anchor =
+        document.querySelector('.video-title') ??
+        document.querySelector('h1') ??
+        document.body?.firstElementChild;
+      if (anchor) ctrl.showRecommendations(anchor, items);
+    });
+  }
 
   // 调试用：验证登录态与页面桥
   const bili = new BiliClient({ getJson });

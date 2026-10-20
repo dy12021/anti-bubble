@@ -10,6 +10,8 @@ import { createLlmClient } from './llm/client';
 import { ProfileService } from './profile-service';
 import { PipelineService } from './pipeline-service';
 import { WordlistService } from '../pipeline/wordlist-service';
+import { judgeOpposition } from '../recommend/opposition';
+import type { SearchItem } from '../bili/types';
 import type { VideoContext } from '../pipeline/types';
 
 /**
@@ -120,6 +122,39 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         const total = await svc.addSamples(samples);
         const profile = await svc.refresh(client, { force: true });
         return { id, ok: true, data: { profile, sampleCount: total } };
+      }
+
+      case MSG.GET_RECOMMENDATIONS: {
+        // 候选视频由 content script 在页面上下文搜好后传进来——
+        // 后台发不了 B 站搜索请求（拿不到 cookie），只负责 LLM 立场判定。
+        const p = req.payload as {
+          video?: VideoContext | null;
+          candidates?: SearchItem[];
+        } | undefined;
+        const candidates = p?.candidates ?? [];
+        if (candidates.length === 0) return { id, ok: true, data: { items: [] } };
+
+        const cfg = await getLlmConfig();
+        if (!cfg) return { id, ok: false, error: '尚未配置 LLM' };
+
+        const client = createLlmClient(cfg);
+        const settings = await getSettings();
+        const profile = await getProfile();
+
+        // 立场摘要从词表缓存里取（词表已经生成过，不额外花钱）
+        let stance = '';
+        if (p?.video) {
+          const svc = new WordlistService(client);
+          const wl = await svc.get(p.video, profile, settings.mode);
+          stance = wl.stance;
+        }
+
+        const items = await judgeOpposition(
+          client,
+          { title: p?.video?.title ?? '', stance },
+          candidates,
+        );
+        return { id, ok: true, data: { items } };
       }
 
       case MSG.GET_WHITELIST:

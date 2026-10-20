@@ -39,6 +39,13 @@ export const MSG = {
   APPLY_VERDICT: 'APPLY_VERDICT',
   /** bg → content：推送反向推荐结果 */
   PUSH_RECOMMENDATIONS: 'PUSH_RECOMMENDATIONS',
+  /**
+   * content → bg：请后台判定哪些候选视频确实表达相反观点。
+   *
+   * 拆成两步是因为 B 站搜索必须在页面上下文做（后台拿不到 cookie）：
+   * content 先用词表里的 oppositeKeywords 搜出候选，再把候选交给后台做 LLM 立场判定。
+   */
+  GET_RECOMMENDATIONS: 'GET_RECOMMENDATIONS',
 } as const;
 
 export type MsgType = (typeof MSG)[keyof typeof MSG];
