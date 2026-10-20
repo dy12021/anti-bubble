@@ -40,6 +40,17 @@ describe('反向推荐的精排', () => {
     expect(p.system).toContain('什么不算');
   });
 
+  /**
+   * 回归防护：候选和当前视频**主张一致**时不能推出来。
+   *
+   * 真机跑出来过：当前视频在讲「AI 有危害」，推出来两条也在讲「AI 有危害」，
+   * 理由文字自己都写着「支持其威胁人类」——放在「相反的观点」标题下很费解。
+   */
+  it('明说「和当前主张一致的候选不要输出」', () => {
+    const p = buildOppositionPrompt({ title: '当前', stance: 'AI 很危险' }, CANDIDATES);
+    expect(p.system).toContain('和当前视频的主张一致时，也不要输出');
+  });
+
   it('按序号取候选', async () => {
     const c = client(JSON.stringify({
       results: [{ id: 2, reason: '它认为 AI 会取代人类工作' }],

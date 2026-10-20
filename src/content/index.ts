@@ -49,6 +49,16 @@ const getJson = createPageBridge({
  */
 const bili = new BiliClient({ getJson });
 
+/**
+ * 反向推荐的召回分轮。
+ *
+ * 每轮搜几个词、总共几轮，是**成本与召回率**的折中：
+ * 一次搜太多词容易撞 B 站搜索风控（-352/-412），一轮搜完没结果就白费；
+ * 但只搜一轮，检索词覆盖不到「另一种说法」时池子里全是同主题内容。
+ */
+const RECALL_KEYWORDS_PER_ROUND = 4;
+const RECALL_ROUNDS = 2;
+
 /** 向 service worker 发消息。 */
 function send(msg: unknown): Promise<unknown> {
   return new Promise((resolve) => {
@@ -269,13 +279,21 @@ async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
 }
 
 /**
- * 反向推荐：三步走。
+ * 反向推荐：**多轮**召回 + 精排。
  *
  * 1. 向后台要动态词表（里面有立场摘要 + 对立检索词）
  * 2. **在页面上下文**用检索词搜 B 站（后台拿不到 cookie，搜不了）
  * 3. 把候选交给后台做 LLM 立场判定，拿回结果渲染
  *
- * 任何一步失败都静默放弃——推荐是锦上添花，不该影响主流程。
+ * ## 为什么分多轮
+ *
+ * 检索词决定候选池，候选池决定能不能筛出真相反观点。
+ * 一组词只覆盖一个说法，池子里可能全是「同主题但不相反」的内容，
+ * 精排自然一条都选不出来——表现是「召回到 20 条却什么都没推」。
+ * 所以第一轮没选出相反观点时，**换一组检索词再试一轮**。
+ *
+ * 成本有上限：每轮 ≤4 个检索词、最多 2 轮，
+ * 也就是最多 8 次搜索 + 2 次精排；找到就立刻停。
  *
  * 返回 `recalled` 是为了区分两种「没结果」：
  * - 没召回到候选（被风控/搜不了）→ 什么都不显示
@@ -301,34 +319,45 @@ async function fetchOppositeRecommendations(
     return { items: [], recalled: false };
   }
 
-  // ② 在页面上下文搜 B 站
-  try {
-    const candidates = await recallOpposite(bili, keywords);
-    if (candidates.length === 0) {
-      console.warn('[anti-bubble] 反向推荐：没召回到候选视频（可能被 B 站风控了）');
-      return { items: [], recalled: false };
-    }
+  // ② 分轮召回 + ③ 每轮精排
+  let recalled = false;
+  for (let round = 0; round < RECALL_ROUNDS; round++) {
+    const slice = keywords.slice(round * RECALL_KEYWORDS_PER_ROUND, (round + 1) * RECALL_KEYWORDS_PER_ROUND);
+    if (slice.length === 0) break;
 
-    // ③ 交给后台判立场
+    let candidates: Awaited<ReturnType<typeof recallOpposite>>;
+    try {
+      candidates = await recallOpposite(bili, slice);
+    } catch {
+      // 搜不了就换下一轮（也可能是风控，别硬撞）
+      continue;
+    }
+    if (candidates.length === 0) {
+      console.warn(`[anti-bubble] 反向召回第 ${round + 1} 轮：没搜到候选（可能被 B 站风控了）`);
+      continue;
+    }
+    recalled = true;
+
     console.info(
-      `[anti-bubble] 反向推荐：候选 ${candidates.length} 条 → ` +
+      `[anti-bubble] 反向推荐第 ${round + 1} 轮：候选 ${candidates.length} 条 → ` +
         candidates.slice(0, 6).map((c, i) => `${i + 1}.${c.title.slice(0, 24)}`).join(' / '),
     );
+
     const judgeResp = (await send({
-      type: MSG.GET_RECOMMENDATIONS, id: 'rec',
+      type: MSG.GET_RECOMMENDATIONS, id: `rec-${round}`,
       payload: { video, candidates },
     })) as { ok?: boolean; data?: { items?: RecommendItem[] } } | null;
 
     const items = judgeResp?.ok ? (judgeResp.data?.items ?? []) : [];
-    if (items.length === 0) {
-      console.info(
-        `[anti-bubble] 反向推荐：召回到 ${candidates.length} 条候选，但没选出明确的相反观点`,
-      );
+    if (items.length > 0) {
+      console.info(`[anti-bubble] 反向推荐：第 ${round + 1} 轮选出 ${items.length} 条相反观点`);
+      return { items, recalled: true };
     }
-    return { items, recalled: true };
-  } catch {
-    return { items: [], recalled: false };
+    console.info(
+      `[anti-bubble] 反向推荐：第 ${round + 1} 轮的 ${candidates.length} 条候选里没选出相反观点`,
+    );
   }
+  return { items: [], recalled };
 }
 
 /**
