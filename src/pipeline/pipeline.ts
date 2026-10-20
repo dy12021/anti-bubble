@@ -63,10 +63,11 @@ export class Pipeline {
     const verdicts = new Map<string, Verdict>();
 
     // 词表先取好：它是 ② 的输入，缺了 ② 只能全放行。
-    // 这一次调用与条目数无关（每个视频 1 次，生产环境命中缓存则 0 次）。
+    // context.wordlist 里如果已经有了（service worker 会先解析好，
+    // 因为它要用词表版本算判定缓存键），就直接用，不再解析一次。
     let wordlist: Wordlist;
     try {
-      wordlist = await this.resolveWordlist(ctx);
+      wordlist = ctx.wordlist ?? (await this.resolveWordlist(ctx));
     } catch {
       // 词表拿不到 → 用空表，全部放行，绝不误伤
       wordlist = EMPTY_WORDLIST;
@@ -133,8 +134,14 @@ export class Pipeline {
     return items.map((i) => verdicts.get(i.id) ?? pass(i.id));
   }
 
-  /** 取词表：优先用注入的 provider，没有就自己调 LLM 生成一份。 */
-  private async resolveWordlist(ctx: PipelineContext): Promise<Wordlist> {
+  /**
+   * 取词表：优先用 context 里已解析好的，
+   * 其次用注入的 provider，最后自己调 LLM 生成一份。
+   *
+   * 对外公开：service worker 需要先拿到词表，才能用「词表版本」算判定缓存键。
+   */
+  async resolveWordlist(ctx: PipelineContext): Promise<Wordlist> {
+    if (ctx.wordlist) return ctx.wordlist;
     if (this.opts.wordlistProvider) return this.opts.wordlistProvider(ctx);
 
     const video = ctx.video ?? { bvid: '', title: '' };

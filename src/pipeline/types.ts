@@ -62,4 +62,11 @@ export interface PipelineContext {
   video: VideoContext | null;
   /** 置信度阈值 */
   threshold: number;
+  /**
+   * 已经解析好的词表。
+   *
+   * 存在的意义：service worker 要**先**拿到词表（才能算词表版本的缓存键），
+   * 再查判定缓存。把词表塞进 context，Pipeline 就不用解析第二次。
+   */
+  wordlist?: Wordlist;
 }

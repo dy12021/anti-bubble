@@ -107,6 +107,56 @@ describe('判定缓存真的会被读', () => {
   });
 });
 
+describe('判定缓存与词表版本', () => {
+  /**
+   * 回归防护：缓存键必须带词表版本。
+   *
+   * 真机验证时踩过：早先一版因为判定请求没带 video，词表是空的，
+   * 于是「粗筛没命中 → 全部放行」的结果被写进了判定缓存。
+   * 后来代码修对了，但因为缓存键不含词表版本，仍然命中缓存早退，
+   * **LLM 再也不会被调用**——插件看起来在运行但什么都不做。
+   */
+  it('画像更新后旧判定不再命中（词表版本变了）', async () => {
+    const c = clientWith(JSON.stringify(WORDLIST));
+    const svc = new PipelineService(c);
+    const items = [item({ id: 'c1', text: '引战' })];
+
+    // 第一轮：画像版本 1
+    store['profile'] = { ...profile, updatedAt: '2026-10-20T00:00:00.000Z' };
+    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    const callsAfterFirst = (c.complete as ReturnType<typeof vi.fn>).mock.calls.length;
+
+    // 第二轮：画像更新了 -> 词表缓存键变了 -> 旧判定不该命中
+    store['profile'] = { ...profile, updatedAt: '2026-10-21T00:00:00.000Z' };
+    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+    expect((c.complete as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsAfterFirst);
+  });
+
+  it('空词表产生的 pass 不入缓存（否则会毒死后续判定）', async () => {
+    const c = clientWith(JSON.stringify(WORDLIST));
+    const svc = new PipelineService(c);
+    const items = [item({ id: 'c1' })];
+
+    // video 传 null -> 词表 provider 返回空表 -> 粗筛没跑成 -> 全部放行
+    await svc.judge(items, { mode: 'cocoon', video: null, threshold: 0.7 });
+
+    // 这种「放行」不是真正的判定，不该被缓存
+    const cache = (store['verdictCache'] ?? {}) as Record<string, unknown>;
+    expect(Object.keys(cache)).toHaveLength(0);
+  });
+
+  it('有词表时判定结果会入缓存', async () => {
+    const c = clientWith(JSON.stringify(WORDLIST));
+    const svc = new PipelineService(c);
+    const items = [item({ id: 'c1', text: '引战' })];
+
+    await svc.judge(items, { mode: 'cocoon', video, threshold: 0.7 });
+
+    const cache = (store['verdictCache'] ?? {}) as Record<string, unknown>;
+    expect(Object.keys(cache).length).toBeGreaterThan(0);
+  });
+});
+
 describe('精判分批', () => {
   it('超过 MAX_BATCH_ITEMS 会分成多次调用', async () => {
     const complete = vi.fn(async () => JSON.stringify({ results: [] }));
