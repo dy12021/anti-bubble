@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   lastError: 'lastError',
   /** 上次尝试重归纳画像的时间。失败后 1 小时内不再重试。 */
   profileRefreshAt: 'profileRefreshAt',
+  /** 冷启动采集报告：每个来源各采到多少、哪些没通。 */
+  collectReport: 'collectReport',
 } as const;
 
 export const VERDICT_ACTIONS = ['pass', 'fold', 'hide', 'mark', 'recommend'] as const;

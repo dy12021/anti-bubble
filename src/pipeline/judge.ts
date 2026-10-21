@@ -27,6 +27,18 @@ export function buildJudgePrompt(
 ): { system: string; user: string } {
   const isAnti = mode === 'anti';
   const isTitle = target === 'title';
+  /**
+   * 有没有「用户画像」可用。
+   *
+   * 没有画像时，「用户大概率不喜欢」是**没有依据**的——
+   * 模型会退而拿「当前页面/视频的主题」当替身，于是把
+   * 「和这个主题无关」的内容也折叠掉。
+   * 用户实测就是这么被误伤的：首页折叠了「Minecraft 工具问题，与 AI 立场无关」——
+   * 那条只是**跑题**，不是**用户不喜欢**。
+   *
+   * 所以没有画像时**只折叠明确的引战**。
+   */
+  const hasProfile = hasUsefulProfile(profile);
 
   const system = [
     isTitle
@@ -48,11 +60,15 @@ export function buildJudgePrompt(
     '',
     'action 的含义：',
     '- pass：正常内容，放行',
-    '- fold：用户大概率不喜欢，折叠',
+    hasProfile
+      ? '- fold：用户大概率不喜欢，折叠'
+      : '- fold：**明确引战、攻击群体、地域歧视**的内容，折叠',
     '- hide：引战/挑起仇恨，隐藏',
-    isAnti
-      ? '- mark：内容与用户可能支持的立场相反，保留并标识'
-      : '- mark：内容用户大概率不喜欢，保留并标识',
+    hasProfile
+      ? (isAnti
+          ? '- mark：内容与用户可能支持的立场相反，保留并标识'
+          : '- mark：内容用户大概率不喜欢，保留并标识')
+      : '- mark：（当前没有用户画像）除非内容明显引战，否则一律 pass',
     '',
     '要求：',
     '- results 的长度必须与输入条数一致，id 与输入序号一一对应',
@@ -62,7 +78,20 @@ export function buildJudgePrompt(
       : '- reason 要针对**评论说了什么**，不要写「评论里有这个词」这种废话',
     '- confidence 反映把握程度；不确定就给低分，不要勉强下结论',
     '- 判不准就给 pass。**宁可漏判，不要误判。**',
-  ].join('\n');
+  ];
+
+  if (!hasProfile) {
+    system.push(
+      '',
+      '【当前没有用户画像，请务必保守】',
+      '系统还不知道用户喜欢什么，所以**不要**替用户猜：',
+      '- 「和这个视频/页面的主题不一致」「跑题了」「不是这类内容」——这些**都不是**折叠理由，',
+      '  用户可能正想看别的题材。遇到这类内容请给 pass。',
+      '- 只有**明确引战**（骂人、攻击某个群体/地区/国籍、嘲讽特定人群、煽动对立）才折叠。',
+    );
+  }
+
+  system.push('');
 
   const w = [
     isTitle ? '【本页的判据】' : '【该视频的判据】',
@@ -105,7 +134,22 @@ export function buildJudgePrompt(
     isTitle ? '【待判视频】' : '【待判评论】',
     ...lines,
   ].join('\n');
-  return { system, user };
+  return { system: system.join('\n'), user };
+}
+
+/**
+ * 画像是否「够用」。
+ *
+ * 画像存在但空空如也（样本 0 条归纳出来的空画像）等于没有——
+ * 这时候拿它当偏好依据，同样会误伤。
+ */
+function hasUsefulProfile(profile: UserProfile | null): boolean {
+  if (!profile) return false;
+  return (
+    profile.interests.length > 0 ||
+    profile.dislikes.length > 0 ||
+    Object.keys(profile.stanceHints).length > 0
+  );
 }
 
 /** 解析 LLM 输出，失败或缺项一律回落为 pass。 */

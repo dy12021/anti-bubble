@@ -37,6 +37,8 @@ export const MSG = {
   GET_WHITELIST: 'GET_WHITELIST',
   /** popup → bg：取最近一次失败（人话） */
   GET_LAST_ERROR: 'GET_LAST_ERROR',
+  /** popup → bg：取冷启动采集报告（各来源条数与失败原因） */
+  GET_COLLECT_REPORT: 'GET_COLLECT_REPORT',
   /** popup → bg：清空画像 */
   CLEAR_PROFILE: 'CLEAR_PROFILE',
   /** bg → content：执行动作 */

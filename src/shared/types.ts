@@ -61,8 +61,20 @@ export interface UserProfileInput {
   watchSeconds?: number;
   /** 样本采集时间 ISO 字符串，用于时间衰减 */
   collectedAt: string;
-  /** 来源：history / favorite / follow / live */
-  origin: 'history' | 'favorite' | 'follow' | 'live';
+  /** 来源：history / favorite / like / follow / submission */
+  origin: 'history' | 'favorite' | 'like' | 'follow' | 'submission';
+}
+
+/** 冷启动采集报告：每个来源各采到多少、哪些没通。 */
+export interface CollectReport {
+  /** 每个来源采到的条数 */
+  counts: Record<string, number>;
+  /** 每个来源的失败原因（没失败就没有这一项） */
+  errors: Record<string, string>;
+  /** 有没有登录 B 站 */
+  loggedIn: boolean;
+  /** 采集时间 */
+  at: string;
 }
 
 /** LLM 归纳出的用户画像。 */

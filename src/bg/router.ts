@@ -1,5 +1,5 @@
 import { MSG, type MsgRequest, type MsgResponse } from '../shared/messages';
-import type { ContentItem, LlmConfig, Mode, SettingsPatch, UserProfileInput } from '../shared/types';
+import type { ContentItem, LlmConfig, Mode, SettingsPatch, UserProfileInput, CollectReport } from '../shared/types';
 import {
   getSettings, saveSettings, getProfile, clearProfile,
   getLlmConfig, saveLlmConfig, getWhitelist, addToWhitelist,
@@ -128,8 +128,20 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
       }
 
       case MSG.SYNC_PROFILE_SAMPLES: {
-        const samples =
-          (req.payload as { samples?: UserProfileInput[] })?.samples ?? [];
+        const p = req.payload as {
+          samples?: UserProfileInput[];
+          report?: CollectReport;
+        } | undefined;
+        // **采集报告要落库**：面板上要能看出「哪个来源没通」，
+        // 否则用户只看到「样本 0 条」，完全不知道是接口坏了还是没登录。
+        if (p?.report) {
+          await setJson(STORAGE_KEYS.collectReport, p.report);
+        }
+        const samples = p?.samples ?? [];
+        if (samples.length === 0) {
+          // 没采到样本：只记报告，不去问 LLM 要一个空画像。
+          return { id, ok: true, data: { profile: await getProfile(), sampleCount: 0 } };
+        }
         const cfg = await getLlmConfig();
         if (!cfg) return { id, ok: false, error: '尚未配置 LLM，无法归纳画像' };
         const client = createLlmClient(cfg);
@@ -138,6 +150,12 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         const profile = await svc.refresh(client, { force: true });
         return { id, ok: true, data: { profile, sampleCount: total } };
       }
+
+      case MSG.GET_COLLECT_REPORT:
+        return {
+          id, ok: true,
+          data: await getJson<CollectReport | null>(STORAGE_KEYS.collectReport, null),
+        };
 
       case MSG.GET_RECOMMENDATIONS: {
         // 候选视频由 content script 在页面上下文搜好后传进来——

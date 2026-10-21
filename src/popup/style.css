@@ -144,6 +144,20 @@ body {
 /* ---------- 画像 ---------- */
 .profile-box, .blocked-box { font-size: 12px; }
 .profile-box .meta { color: var(--ink-3); font-size: 11px; margin-bottom: 6px; }
+
+/* 采集报告：每个来源各采到多少、哪些没通。
+ * 画像是 0 条时，用户分不清「没登录」「接口坏了」「这个源本来没数据」——
+ * 把每个来源的条数摆出来，哪一路不通一眼就看到。 */
+.collect-report { margin: 8px 0 2px; font-size: 11px; }
+.collect-label { color: var(--ink-3); margin-bottom: 3px; }
+.collect-srcs { display: flex; flex-wrap: wrap; gap: 4px; }
+.collect-src {
+  padding: 1px 6px; border-radius: 4px;
+  background: #eef1f4; color: var(--ink-3);
+}
+.collect-src.ok { background: #e7f6ec; color: #1a7f37; }
+.collect-src.err { background: #fdecec; color: #d63b3b; cursor: help; }
+.collect-note { color: var(--ink-3); margin-top: 4px; }
 .tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .tags-label { margin: 8px 0 3px; color: var(--ink-3); font-size: 11px; }
 .tag {

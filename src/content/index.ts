@@ -269,12 +269,29 @@ async function coldStartIfNeeded(settings: Settings | null): Promise<void> {
   await new Promise((r) => setTimeout(r, COLD_START_DELAY_MS));
 
   try {
-    const samples = await collectColdStart(bili, { includeHistory: settings.collectHistory });
-    if (samples.length === 0) return;
+    const result = await collectColdStart(bili, { includeHistory: settings.collectHistory });
+    console.info(
+      `[anti-bubble] 冷启动采集：${result.samples.length} 条（` +
+        Object.entries(result.counts).map(([k, v]) => `${k}=${v}`).join(' ') + '）' +
+        (Object.keys(result.errors).length
+          ? ` 未通：${Object.entries(result.errors).map(([k, v]) => `${k}(${v})`).join(' ')}`
+          : ''),
+    );
+    // **即使 0 条也要把报告发回去**：
+    // 0 条时用户更需要知道「是没登录还是接口坏了」，
+    // 早先「0 条就 return」等于把最有用的诊断信息一起吞了。
     await send({
       type: MSG.SYNC_PROFILE_SAMPLES,
       id: 'cold-sync',
-      payload: { samples },
+      payload: {
+        samples: result.samples,
+        report: {
+          counts: result.counts,
+          errors: result.errors,
+          loggedIn: result.loggedIn,
+          at: new Date().toISOString(),
+        },
+      },
     });
   } catch {
     // 采集失败不该影响浏览

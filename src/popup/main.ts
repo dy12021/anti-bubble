@@ -1,5 +1,5 @@
 import { MSG } from '../shared/messages';
-import type { Settings, UserProfile } from '../shared/types';
+import type { Settings, UserProfile, CollectReport } from '../shared/types';
 
 /* ------------------------------------------------------------------ *
  * 面板逻辑
@@ -265,6 +265,42 @@ function escapeHtml(s: string): string {
 async function loadProfile(): Promise<void> {
   const r = await call<UserProfile | null>(MSG.GET_PROFILE);
   renderProfile(r.ok ? (r.data ?? null) : null);
+  await renderCollectReport();
+}
+
+/**
+ * 采集报告：每个来源各采到多少、哪些没通。
+ *
+ * **为什么必须显示**：画像是 0 条时，用户分不清
+ * 「没登录」「接口坏了」「这个源本来就没数据」。
+ * 把每个来源的条数摆出来，哪一路不通一眼就看到。
+ */
+async function renderCollectReport(): Promise<void> {
+  const box = el('collectReport');
+  const r = await call<CollectReport | null>(MSG.GET_COLLECT_REPORT);
+  const rep = r.data;
+  if (!rep) {
+    box.innerHTML = '';
+    return;
+  }
+  const labels: Record<string, string> = {
+    history: '观看历史',
+    favorite: '收藏夹',
+    like: '点赞',
+    following: '关注',
+    submission: '我的投稿',
+  };
+  const parts = Object.entries(labels).map(([k, label]) => {
+    const n = rep.counts?.[k] ?? 0;
+    const err = rep.errors?.[k];
+    const cls = err ? 'collect-src err' : n > 0 ? 'collect-src ok' : 'collect-src';
+    const tip = err ? ` title="${escapeHtml(err)}"` : '';
+    return `<span class="${cls}"${tip}>${label} ${err ? '✗' : n}</span>`;
+  });
+  const note = !rep.loggedIn
+    ? '<div class="collect-note">未登录 B 站，收藏/点赞/关注读不到（评论过滤仍可用）</div>'
+    : '';
+  box.innerHTML = `<div class="collect-label">采集来源</div><div class="collect-srcs">${parts.join('')}</div>${note}`;
 }
 
 function bindProfile(): void {

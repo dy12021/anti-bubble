@@ -18,6 +18,8 @@ import type { ContentItem } from '../../src/shared/types';
 const NAV_RESPONSE = {
   code: 0, message: '0',
   data: {
+    mid: 999,
+    isLogin: true,
     wbi_img: {
       img_url: 'https://i0.hdslb.com/bfs/wbi/7cd084941338484aae1ad9425b84077c.png',
       sub_url: 'https://i0.hdslb.com/bfs/wbi/4932caff0ff746eab6f07bf2184b0cbc.png',
@@ -75,10 +77,11 @@ describe('样本采集', () => {
         },
       },
     });
-    const samples = await collectColdStart(c);
-    expect(samples.length).toBeGreaterThan(0);
-    expect(samples[0]!.id).toBe('BV1');
-    expect(samples[0]!.origin).toBe('history');
+    const r = await collectColdStart(c);
+    expect(r.samples.length).toBeGreaterThan(0);
+    expect(r.samples[0]!.id).toBe('BV1');
+    expect(r.samples[0]!.origin).toBe('history');
+    expect(r.counts['history']).toBe(1);
   });
 
   it('关闭 includeHistory 时不拉历史', async () => {
@@ -95,13 +98,119 @@ describe('样本采集', () => {
     expect(seen.some((u) => u.includes('/x/v2/history/cursor'))).toBe(false);
   });
 
-  it('拉取失败时返回空数组而不是抛错', async () => {
+  it('拉取失败时不抛错，样本为空并记下原因', async () => {
     const c = new BiliClient({
       getJson: async () => { throw new Error('net'); },
       now: () => 1_700_000_000_000,
       sleep: async () => {},
     });
-    expect(await collectColdStart(c)).toEqual([]);
+    const r = await collectColdStart(c);
+    expect(r.samples).toEqual([]);
+    expect(r.loggedIn).toBe(false);
+  });
+
+  /**
+   * 回归防护：**必填参数不能漏**。
+   *
+   * 用户实测反馈「没有读取我的收藏」——根因就是
+   * `/x/v3/fav/folder/created/list-all` 漏了 `up_mid`，B 站返回 -400。
+   * 看起来像「没有收藏」，其实是「参数不对」。
+   */
+  it('收藏夹列表带 up_mid、收藏夹内容用 media_id', async () => {
+    const seen: string[] = [];
+    const c = new BiliClient({
+      getJson: async (url: string) => {
+        seen.push(url);
+        if (url.includes('/x/web-interface/nav')) {
+          return { code: 0, message: '0', data: { mid: 999, isLogin: true } };
+        }
+        if (url.includes('/x/v3/fav/folder/created/list-all')) {
+          return { code: 0, message: '0', data: { list: [{ id: 42, title: '收藏夹', media_count: 2 }] } };
+        }
+        if (url.includes('/x/v3/fav/resource/list')) {
+          return {
+            code: 0, message: '0',
+            data: { medias: [{ id: 1, bvid: 'BVfav1', title: '收藏的视频', upper: { name: 'UP' } }] },
+          };
+        }
+        return { code: 0, message: '0', data: null };
+      },
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    });
+    const r = await collectColdStart(c);
+    const folderCall = seen.find((u) => u.includes('list-all'))!;
+    expect(folderCall).toContain('up_mid=999');
+    const itemCall = seen.find((u) => u.includes('/x/v3/fav/resource/list'))!;
+    expect(itemCall).toContain('media_id=42');
+    expect(r.counts['favorite']).toBe(1);
+    expect(r.samples.some((s) => s.id === 'BVfav1')).toBe(true);
+  });
+
+  it('关注列表带 vmid', async () => {
+    const seen: string[] = [];
+    const c = new BiliClient({
+      getJson: async (url: string) => {
+        seen.push(url);
+        if (url.includes('/x/web-interface/nav')) {
+          return { code: 0, message: '0', data: { mid: 999, isLogin: true } };
+        }
+        if (url.includes('/x/relation/followings')) {
+          return { code: 0, message: '0', data: { list: [{ mid: 5, uname: '关注的UP' }] } };
+        }
+        return { code: 0, message: '0', data: null };
+      },
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    });
+    const r = await collectColdStart(c);
+    const call = seen.find((u) => u.includes('/x/relation/followings'))!;
+    expect(call).toContain('vmid=999');
+    expect(r.counts['following']).toBe(1);
+  });
+
+  /**
+   * 回归防护：**一个源失败不能拖垮整轮采集**。
+   *
+   * 早先是「收藏夹接口抛异常 → 整轮采集中断 → 样本 0 条」，
+   * 症状是「什么都没读到」，而不是「这个源没读到」。
+   */
+  it('一个源失败，其它源照常采到（逐源隔离）', async () => {
+    const c = new BiliClient({
+      getJson: async (url: string) => {
+        if (url.includes('/x/web-interface/nav')) {
+          return { code: 0, message: '0', data: { mid: 999, isLogin: true } };
+        }
+        if (url.includes('/x/v3/fav/folder/created/list-all')) {
+          throw new Error('收藏夹接口炸了');
+        }
+        if (url.includes('/x/v2/history/cursor')) {
+          return {
+            code: 0, message: '0',
+            data: { list: [{ history: { bvid: 'BVh1', title: '历史', author_name: 'UP' } }], page: {} },
+          };
+        }
+        return { code: 0, message: '0', data: null };
+      },
+      now: () => 1_700_000_000_000,
+      sleep: async () => {},
+    });
+    const r = await collectColdStart(c);
+    expect(r.counts['history']).toBe(1);
+    expect(r.samples.some((s) => s.id === 'BVh1')).toBe(true);
+  });
+
+  it('每个来源的条数分别统计（面板要能看出哪一路没通）', async () => {
+    const c = clientWith({
+      '/x/v2/history/cursor': {
+        code: 0, message: '0',
+        data: { list: [{ history: { bvid: 'BV1', title: 't', author_name: 'u' } }], page: {} },
+      },
+    });
+    const r = await collectColdStart(c);
+    expect(r.counts['history']).toBe(1);
+    expect(r.counts['favorite']).toBe(0);
+    expect(Object.keys(r.counts).length).toBeGreaterThanOrEqual(5);
   });
 
   /**
@@ -147,6 +256,9 @@ describe('样本采集', () => {
   it('样本总数有上限', async () => {
     const c = new BiliClient({
       getJson: async (url: string) => {
+        if (url.includes('/x/web-interface/nav')) {
+          return { code: 0, message: '0', data: { mid: 999, isLogin: true } };
+        }
         if (url.includes('/x/v3/fav/folder/created/list-all')) {
           return {
             code: 0, message: '0',
@@ -164,7 +276,7 @@ describe('样本采集', () => {
       now: () => 1_700_000_000_000,
       sleep: async () => {},
     });
-    const samples = await collectColdStart(c);
-    expect(samples.length).toBeLessThanOrEqual(COLD_START_MAX_SAMPLES);
+    const r = await collectColdStart(c);
+    expect(r.samples.length).toBeLessThanOrEqual(COLD_START_MAX_SAMPLES);
   });
 });

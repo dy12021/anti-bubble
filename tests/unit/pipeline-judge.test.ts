@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { buildJudgePrompt, parseJudgments, judgeItems } from '../../src/pipeline/judge';
 import type { Wordlist } from '../../src/pipeline/types';
 import type { LlmClient } from '../../src/bg/llm/client';
+import type { UserProfile } from '../../src/shared/types';
 
 const wl: Wordlist = {
   patterns: ['引战'], stance: '支持 A', oppositeKeywords: [], cacheKey: 'k',
@@ -134,5 +135,48 @@ describe('精判的两种对象', () => {
       wl, 'cocoon', null, 'title',
     );
     expect(p.user).not.toContain('【该视频】');
+  });
+});
+
+/**
+ * 回归防护：**没有画像时不能替用户猜**。
+ *
+ * 用户实测：首页折叠了「Minecraft 工具问题，与 AI 立场无关」——
+ * 那条只是**跑题**，不是**用户不喜欢**。根因是没有画像时，
+ * 模型拿「当前页面/视频的主题」当成了用户偏好的替身。
+ */
+describe('没有画像时必须保守', () => {
+  it('没有画像时明说「跑题不是折叠理由」', () => {
+    const p = buildJudgePrompt([{ text: 't', author: 'u' }], wl, 'cocoon', null);
+    expect(p.system).toContain('当前没有用户画像，请务必保守');
+    expect(p.system).toContain('跑题');
+  });
+
+  it('没有画像时 fold 只留给明确引战', () => {
+    const p = buildJudgePrompt([{ text: 't', author: 'u' }], wl, 'cocoon', null);
+    expect(p.system).toContain('明确引战');
+  });
+
+  it('有画像时按用户偏好判，没有这个保守条款', () => {
+    const profile: UserProfile = {
+      interests: [{ tag: '科技', weight: 0.9 }],
+      dislikes: ['游戏'],
+      stanceHints: {},
+      topics: [],
+      updatedAt: '2026-10-20T00:00:00.000Z',
+      sampleCount: 5,
+    };
+    const p = buildJudgePrompt([{ text: 't', author: 'u' }], wl, 'cocoon', profile);
+    expect(p.system).not.toContain('当前没有用户画像');
+    expect(p.system).toContain('用户大概率不喜欢');
+  });
+
+  it('画像存在但空空的，等于没有（仍然保守）', () => {
+    const empty: UserProfile = {
+      interests: [], dislikes: [], stanceHints: {}, topics: [],
+      updatedAt: '2026-10-20T00:00:00.000Z', sampleCount: 0,
+    };
+    const p = buildJudgePrompt([{ text: 't', author: 'u' }], wl, 'cocoon', empty);
+    expect(p.system).toContain('当前没有用户画像，请务必保守');
   });
 });

@@ -262,7 +262,7 @@ async function main(): Promise<void> {
   const l2 = (await httpJson('/json/list')) as any[];
   const p2cdp = await Cdp.connect(l2.find((t) => t.id === p2)!.webSocketDebuggerUrl);
   const bg = await p2cdp.eval(`(async () => {
-    const st = await chrome.storage.local.get(['wordlistCache','verdictCache','blockedLog','profile','watchLog','settings']);
+    const st = await chrome.storage.local.get(['wordlistCache','verdictCache','blockedLog','profile','watchLog','settings','collectReport']);
     const wl = st['wordlistCache'] ?? {};
     const vc = st['verdictCache'] ?? {};
     const bl = st['blockedLog'] ?? [];
@@ -271,6 +271,7 @@ async function main(): Promise<void> {
     const watchLog = st['watchLog'] ?? [];
     return JSON.stringify({
       mode: st['settings']?.mode ?? null,
+      collectReport: st['collectReport'] ?? null,
       watchLogCount: Array.isArray(watchLog) ? watchLog.length : 0,
       watchLogSample: Array.isArray(watchLog) ? watchLog.slice(0,3).map(s => ({
         id: s.id, title: String(s.title||'').slice(0,40), watchSeconds: s.watchSeconds, category: s.category,
