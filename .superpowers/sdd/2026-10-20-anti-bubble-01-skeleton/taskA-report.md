@@ -1,7 +1,7 @@
 # Task A 报告：存储层 + LLM 客户端契约层
 
 - 计划：`docs/superpowers/plans/2026-10-20-anti-bubble-01-skeleton.md`（Task 5、Task 6）
-- 仓库：`D:\coding\anti-bubble`　分支：`feature/anti-bubble-v1`
+- 仓库：`<repo>`　分支：`feature/anti-bubble-v1`
 - 执行时间：2026-10-20 13:11–13:20
 - 状态：**DONE_WITH_CONCERNS**（本批文件全绿；仓库级 `tsc --noEmit` 仍红，原因在其它批次，见「潜在问题」）
 
@@ -106,7 +106,7 @@ export function createLlmClient(config: LlmConfig): LlmClient
 ## 3. 跑的命令与输出摘要
 
 ```
-cd D:\coding\anti-bubble
+cd <repo>
 npx vitest run tests/unit/storage.test.ts tests/unit/llm-client.test.ts
 ```
 ```
@@ -118,7 +118,7 @@ EXIT=0
 ```
 
 ```
-cd D:\coding\anti-bubble
+cd <repo>
 npx vitest run          # 全量
 ```
 ```
@@ -131,7 +131,7 @@ VITEST_EXIT=0
 ```
 
 ```
-cd D:\coding\anti-bubble
+cd <repo>
 npx tsc --noEmit
 ```
 - **本批 6 个文件：干净。** 因仓库里其它批次文件处于半成品状态（见第 5 节），仓库级 `tsc --noEmit` 当前退出码 2，错误全部落在 `src/bg/router.ts`（controller 拥有）和缺失的其它批次模块上，**没有一条来自我拥有的文件**。

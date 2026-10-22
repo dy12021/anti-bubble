@@ -311,7 +311,7 @@ const action: VerdictAction = rawAction;
 ## 8. 复现命令
 
 ```bash
-cd D:\coding\anti-bubble
+cd <repo>
 npx vitest run tests/unit/pipeline-wordlist.test.ts tests/unit/pipeline-coarse.test.ts \
   tests/unit/pipeline-judge.test.ts tests/unit/pipeline.test.ts \
   tests/unit/pipeline-wordlist-service.test.ts tests/unit/pipeline-verdict-cache.test.ts

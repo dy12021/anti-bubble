@@ -2,7 +2,7 @@
 
 - 计划：`docs/superpowers/plans/2026-10-20-anti-bubble-05-adapters.md`（Task 1~7 的代码部分）
 - 简报：`.superpowers/sdd/2026-10-20-anti-bubble-01-skeleton/taskE-brief.md`
-- 仓库：`D:\coding\anti-bubble`　分支：`feature/anti-bubble-v1`
+- 仓库：`<repo>`　分支：`feature/anti-bubble-v1`
 - 执行时间：2026-10-20 13:19–13:30
 - 状态：**DONE_WITH_CONCERNS**
   （本批 87 个用例全绿、仓库级 `tsc --noEmit` 退出码 0；
@@ -105,7 +105,7 @@ export function detectPageType(url: string): PageType;
 命令：
 
 ```
-cd D:\coding\anti-bubble
+cd <repo>
 npx vitest run tests/unit/adapter-search.test.ts tests/unit/adapter-video.test.ts \
   tests/unit/adapter-feed.test.ts tests/unit/actions-fold.test.ts tests/unit/actions-mark.test.ts \
   tests/unit/recommend-recall.test.ts tests/unit/content-controller.test.ts

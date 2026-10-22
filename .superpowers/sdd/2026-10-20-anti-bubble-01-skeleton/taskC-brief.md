@@ -6,16 +6,16 @@
 ## 你的文件所有权（只准碰这些）
 
 **创建：**
-- `D:\coding\anti-bubble\src\profile\merge.ts`
-- `D:\coding\anti-bubble\src\profile\rules.ts`
-- `D:\coding\anti-bubble\src\profile\induce.ts`
-- `D:\coding\anti-bubble\src\profile\collect.ts`
-- `D:\coding\anti-bubble\src\bg\profile-service.ts`
-- `D:\coding\anti-bubble\tests\unit\profile-merge.test.ts`
-- `D:\coding\anti-bubble\tests\unit\profile-rules.test.ts`
-- `D:\coding\anti-bubble\tests\unit\profile-induce.test.ts`
-- `D:\coding\anti-bubble\tests\unit\profile-collect.test.ts`
-- `D:\coding\anti-bubble\tests\unit\profile-service.test.ts`
+- `<repo>\src\profile\merge.ts`
+- `<repo>\src\profile\rules.ts`
+- `<repo>\src\profile\induce.ts`
+- `<repo>\src\profile\collect.ts`
+- `<repo>\src\bg\profile-service.ts`
+- `<repo>\tests\unit\profile-merge.test.ts`
+- `<repo>\tests\unit\profile-rules.test.ts`
+- `<repo>\tests\unit\profile-induce.test.ts`
+- `<repo>\tests\unit\profile-collect.test.ts`
+- `<repo>\tests\unit\profile-service.test.ts`
 
 **不要碰**：`src/shared/*`、`src/bg/storage.ts`、`src/bg/llm/*`、`src/bili/*`、`src/pipeline/*`、
 `src/adapters/*`、`src/actions/*`、`src/recommend/*`、`src/content/*`、`src/bg/router.ts`、`src/bg/index.ts`。
@@ -68,7 +68,7 @@
 ## 完成后跑
 
 ```
-cd /d D:\coding\anti-bubble   # 或用绝对路径
+cd /d <repo>   # 或用绝对路径
 npx vitest run tests/unit/profile-merge.test.ts tests/unit/profile-rules.test.ts tests/unit/profile-induce.test.ts tests/unit/profile-collect.test.ts tests/unit/profile-service.test.ts
 npx tsc --noEmit
 ```

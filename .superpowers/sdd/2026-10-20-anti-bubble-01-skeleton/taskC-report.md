@@ -1,6 +1,6 @@
 # 批次 C 报告：画像子系统（计划 03）
 
-- 仓库：`D:\coding\anti-bubble`
+- 仓库：`<repo>`
 - 分支：`feature/anti-bubble-v1`
 - 执行时间：2026-10-20 13:15–13:25
 - 未执行 `git commit`（按要求由 controller 统一提交）
@@ -34,7 +34,7 @@
 ### 2.1 目标测试（要求命令）
 
 ```
-cd D:\coding\anti-bubble
+cd <repo>
 npx vitest run tests/unit/profile-merge.test.ts tests/unit/profile-rules.test.ts tests/unit/profile-induce.test.ts tests/unit/profile-collect.test.ts tests/unit/profile-service.test.ts
 ```
 
@@ -215,7 +215,7 @@ npx tsc --noEmit --target ES2022 --module ESNext --moduleResolution bundler \
 ## 6. 复现命令
 
 ```bash
-cd D:\coding\anti-bubble
+cd <repo>
 npx vitest run tests/unit/profile-merge.test.ts tests/unit/profile-rules.test.ts tests/unit/profile-induce.test.ts tests/unit/profile-collect.test.ts tests/unit/profile-service.test.ts
 npx vitest run            # 全量 123/123
 npx tsc --noEmit          # 全项目（当前卡在批次 D/E/F 的文件，批次 C 自身干净）

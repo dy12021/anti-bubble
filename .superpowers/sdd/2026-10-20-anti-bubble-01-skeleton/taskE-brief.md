@@ -13,28 +13,28 @@
 ## 你的文件所有权（只准碰这些）
 
 **创建：**
-- `D:\coding\anti-bubble\src\adapters\types.ts`
-- `D:\coding\anti-bubble\src\adapters\search.ts`
-- `D:\coding\anti-bubble\src\adapters\video.ts`
-- `D:\coding\anti-bubble\src\adapters\feed.ts`
-- `D:\coding\anti-bubble\src\adapters\index.ts`
-- `D:\coding\anti-bubble\src\actions\fold.ts`
-- `D:\coding\anti-bubble\src\actions\mark.ts`
-- `D:\coding\anti-bubble\src\actions\recommend.ts`
-- `D:\coding\anti-bubble\src\actions\index.ts`
-- `D:\coding\anti-bubble\src\recommend\recall.ts`
-- `D:\coding\anti-bubble\src\recommend\opposition.ts`
-- `D:\coding\anti-bubble\src\content\controller.ts`
-- `D:\coding\anti-bubble\tests\fixtures\search.html`
-- `D:\coding\anti-bubble\tests\fixtures\video.html`
-- `D:\coding\anti-bubble\tests\fixtures\feed.html`
-- `D:\coding\anti-bubble\tests\unit\adapter-search.test.ts`
-- `D:\coding\anti-bubble\tests\unit\adapter-video.test.ts`
-- `D:\coding\anti-bubble\tests\unit\adapter-feed.test.ts`
-- `D:\coding\anti-bubble\tests\unit\actions-fold.test.ts`
-- `D:\coding\anti-bubble\tests\unit\actions-mark.test.ts`
-- `D:\coding\anti-bubble\tests\unit\recommend-recall.test.ts`
-- `D:\coding\anti-bubble\tests\unit\content-controller.test.ts`
+- `<repo>\src\adapters\types.ts`
+- `<repo>\src\adapters\search.ts`
+- `<repo>\src\adapters\video.ts`
+- `<repo>\src\adapters\feed.ts`
+- `<repo>\src\adapters\index.ts`
+- `<repo>\src\actions\fold.ts`
+- `<repo>\src\actions\mark.ts`
+- `<repo>\src\actions\recommend.ts`
+- `<repo>\src\actions\index.ts`
+- `<repo>\src\recommend\recall.ts`
+- `<repo>\src\recommend\opposition.ts`
+- `<repo>\src\content\controller.ts`
+- `<repo>\tests\fixtures\search.html`
+- `<repo>\tests\fixtures\video.html`
+- `<repo>\tests\fixtures\feed.html`
+- `<repo>\tests\unit\adapter-search.test.ts`
+- `<repo>\tests\unit\adapter-video.test.ts`
+- `<repo>\tests\unit\adapter-feed.test.ts`
+- `<repo>\tests\unit\actions-fold.test.ts`
+- `<repo>\tests\unit\actions-mark.test.ts`
+- `<repo>\tests\unit\recommend-recall.test.ts`
+- `<repo>\tests\unit\content-controller.test.ts`
 
 **不要碰**：`src/shared/*`、`src/bg/*`、`src/bili/*`、`src/profile/*`、`src/pipeline/*`、
 `src/content/index.ts`、`src/content/page-bridge.ts`、`src/content/page-fetch.js`、

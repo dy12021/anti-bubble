@@ -3,9 +3,15 @@
  *
  * 不做任何撤销操作——要拍的就是「被折叠 + 理由 + 仍要显示」的样子。
  */
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+const DIST = join(REPO, 'dist');
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9334';
-const OUT = process.env.OUT ?? 'D:\\coding\\anti-bubble\\docs\\e2e-edge-feed-fold.png';
+const OUT = process.env.OUT ?? join(REPO, 'docs', 'e2e-edge-feed-fold.png');
 const URL_TO_OPEN = process.env.NAV_URL ?? 'https://www.bilibili.com/';
 const WAIT_S = Number(process.env.WAIT_S ?? 60);
 
@@ -62,7 +68,7 @@ async function main(): Promise<void> {
   // profileDislikes=词1,词2 → 标题里含这些词的卡片会被本地闸门直接折叠
   const dislikes = process.env.PROFILE_DISLIKES ?? '';
   if (dislikes) {
-    const loaded = await browser.send('Extensions.loadUnpacked', { path: 'D:\\coding\\anti-bubble\\dist' });
+    const loaded = await browser.send('Extensions.loadUnpacked', { path: DIST });
     const extId = loaded?.id as string;
     const { targetId } = await browser.send('Target.createTarget', {
       url: `chrome-extension://${extId}/src/popup/index.html`,

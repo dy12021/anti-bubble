@@ -21,11 +21,17 @@
  *   PAGE=search|video|feed node --experimental-strip-types scripts/e2e-verify.ts
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+// LLM 配置来源：默认读同级目录下的 llm-quant/config.toml，可用环境变量覆盖。
+const CONFIG_TOML = process.env.LLM_CONFIG ?? join(REPO, '..', 'llm-quant', 'config.toml');
 
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
-const DIST = 'D:\\coding\\anti-bubble\\dist';
-const CONFIG_TOML = 'D:\\coding\\llm-quant\\config.toml';
+const DIST = join(REPO, 'dist');
 const PAGE = process.env.PAGE ?? 'search';
 const MODE = process.env.MODE ?? 'cocoon';
 const WAIT_S = Number(process.env.WAIT_S ?? 240);
@@ -341,7 +347,7 @@ async function main(): Promise<void> {
   log('=== 撤销 / 推荐验证 ===\n' + revoke);
 
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-  const out = `D:\\coding\\anti-bubble\\docs\\e2e-${PAGE}.png`;
+  const out = join(REPO, 'docs', `e2e-${PAGE}.png`);
   writeFileSync(out, Buffer.from(shot.data, 'base64'));
   log('截图: ' + out);
 

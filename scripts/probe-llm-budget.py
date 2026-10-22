@@ -5,11 +5,18 @@
 所以要试：更大的预算、max_completion_tokens、不带上限。
 """
 import json
+import os
 import re
 import time
 import urllib.request
 
-CFG = r"D:\coding\llm-quant\config.toml"
+# Repo root is derived from this script's own location.
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# LLM config comes from the sibling llm-quant checkout by default; override
+# with the LLM_CONFIG environment variable.
+CFG = os.environ.get(
+    "LLM_CONFIG", os.path.join(REPO, "..", "llm-quant", "config.toml")
+)
 with open(CFG, "r", encoding="utf-8") as f:
     text = f.read()
 

@@ -156,6 +156,7 @@ B 站对未登录用户屏蔽评论（API 返回 -403），画像也需要登录
 npm run dev        # watch 构建
 npm run test       # 单元测试
 npm run typecheck  # 类型检查
+npm run scan:secrets  # 扫仓库里的本机绝对路径 / 密钥 / 邮箱（开源前跑）
 ```
 
 ### 真机验证
@@ -177,7 +178,8 @@ node --experimental-strip-types scripts/e2e-verify.ts
 > **仍然跑缓存里的旧代码**——症状是「我明明 rebuild 了，行为却还是老的」，
 > 甚至会返回旧版本的错误串。每次验证用新的 profile 目录可完全避开。
 > LLM 配置由 `e2e-verify.ts` 从 `llm-quant/config.toml` 读并注入扩展 storage
-> （Key 不进代码、不进日志）。
+> （Key 不进代码、不进日志）。默认读**同级目录**下的 `../llm-quant/config.toml`，
+> 路径不一样时用环境变量 `LLM_CONFIG` 指过去。
 
 > Chrome 142+ 把 `--load-extension` 从代码里删了（`DisableLoadExtensionCommandLineSwitch`
 > 整个特性被移除），命令行加载扩展已失效。唯一可行的自动化路径是 CDP 的
@@ -220,4 +222,4 @@ node --experimental-strip-types scripts/e2e-verify.ts
 
 ## License
 
-MIT
+MIT，详见 [LICENSE](LICENSE)。

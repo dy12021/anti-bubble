@@ -18,7 +18,7 @@ def png(path, size, rgba=(31, 111, 235, 255)):
         f.write(data)
 
 
-base = r"D:\coding\anti-bubble\public"
+base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "public")
 os.makedirs(base, exist_ok=True)
 for s in (16, 48, 128):
     png(os.path.join(base, "icon-%d.png" % s), s)

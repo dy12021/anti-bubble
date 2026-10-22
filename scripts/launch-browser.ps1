@@ -23,22 +23,36 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$dist = "D:\coding\anti-bubble\dist"
+
+# Repo root is derived from this script's own location, so the script works
+# no matter where the repo is cloned or which drive letter it lives on.
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$dist = Join-Path $repoRoot 'dist'
 
 if (-not (Test-Path $dist)) {
   Write-Host "dist missing - run npm run build first" -ForegroundColor Red
   exit 1
 }
 
-if ($Browser -eq 'edge') {
-  $exe = "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe"
-  if (-not (Test-Path $exe)) { $exe = "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe" }
-} else {
-  $exe = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+# Browser executables are resolved from environment variables (never a hard
+# coded drive letter), trying every known install location in turn.
+$baseDirs = @()
+foreach ($v in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)) {
+  if ($v) { $baseDirs += $v }
 }
+$candidates = @()
+foreach ($base in $baseDirs) {
+  if ($Browser -eq 'edge') {
+    $candidates += (Join-Path $base 'Microsoft\Edge\Application\msedge.exe')
+  } else {
+    $candidates += (Join-Path $base 'Google\Chrome\Application\chrome.exe')
+  }
+}
+$exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-if (-not (Test-Path $exe)) {
-  Write-Host "browser not found: $exe" -ForegroundColor Red
+if (-not $exe) {
+  Write-Host "browser not found - looked for $Browser in:" -ForegroundColor Red
+  foreach ($c in $candidates) { Write-Host "  $c" }
   exit 1
 }
 

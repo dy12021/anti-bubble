@@ -4,6 +4,11 @@
  * 步骤：导航到视频页 → 等待判定完成 → 读 DOM 看屏蔽结果与理由 → 截图。
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
@@ -141,7 +146,7 @@ async function main(): Promise<void> {
 
   // 截图留证
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-  const outPath = 'D:\\coding\\anti-bubble\\docs\\e2e-video-page.png';
+  const outPath = join(REPO, 'docs', 'e2e-video-page.png');
   writeFileSync(outPath, Buffer.from(shot.data, 'base64'));
   console.log('\n截图已存:', outPath);
 

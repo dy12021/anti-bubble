@@ -253,7 +253,7 @@ body { font-family: system-ui, sans-serif; margin: 0; padding: 12px; width: 320p
 
 ```powershell
 $ErrorActionPreference='Stop'
-New-Item -ItemType Directory -Force -Path 'D:\coding\anti-bubble\public' | Out-Null
+New-Item -ItemType Directory -Force -Path '<repo>\public' | Out-Null
 @'
 import struct, zlib, os
 def png(path, size, rgba=(31,111,235,255)):
@@ -267,12 +267,12 @@ def png(path, size, rgba=(31,111,235,255)):
             + chunk(b"IEND", b""))
     with open(path, "wb") as f:
         f.write(data)
-base = r"D:\coding\anti-bubble\public"
+base = r"<repo>\public"
 for s in (16, 48, 128):
     png(os.path.join(base, "icon-%d.png" % s), s)
 print("icons written")
 '@ | Set-Content -Path "$env:TEMP\gen_icons.py" -Encoding UTF8
-& 'C:\ProgramData\anaconda3\python.exe' "$env:TEMP\gen_icons.py"
+& 'python' "$env:TEMP\gen_icons.py"
 ```
 
 Expected: 输出 `icons written`，`public/` 下出现三个 PNG
@@ -289,7 +289,7 @@ Expected: 退出码 0，`dist/` 目录生成且含 `manifest.json`
 构建成功**不等于**产物可用——CRXJS 不会校验 manifest 里的资源路径。必须逐个核对：
 
 ```powershell
-Set-Location 'D:\coding\anti-bubble'
+Set-Location '<repo>'
 $m = Get-Content 'dist\manifest.json' -Raw -Encoding UTF8 | ConvertFrom-Json
 foreach ($k in $m.icons.PSObject.Properties) {
   Write-Host ("icon " + $k.Name + " -> " + $k.Value + " exists=" + (Test-Path (Join-Path 'dist' $k.Value)))

@@ -7,6 +7,13 @@
  * 推理模型每次调用 10-60 秒，词表 + 精判两次调用，所以要等 2-3 分钟。
  */
 import { writeFileSync, readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+// LLM 配置来源：默认读同级目录下的 llm-quant/config.toml，可用环境变量覆盖。
+const CONFIG_TOML = process.env.LLM_CONFIG ?? join(REPO, '..', 'llm-quant', 'config.toml');
 
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
@@ -81,7 +88,7 @@ async function main(): Promise<void> {
 
   // ① 装扩展
   const loaded = await browser.send('Extensions.loadUnpacked', {
-    path: 'D:\\coding\\anti-bubble\\dist',
+    path: join(REPO, 'dist'),
   });
   const extId = loaded?.id as string;
   console.log('扩展 id:', extId);
@@ -111,7 +118,7 @@ async function main(): Promise<void> {
   // 用**扩展页面**（popup）注入，不用 service worker：
   // SW 刚被 loadUnpacked 拉起时，CDP 连上去的默认执行上下文还没就绪，
   // 会报 "chrome is not defined"。扩展页面则一定有完整的 chrome.* API。
-  const toml = readFileSync('D:\\coding\\llm-quant\\config.toml', 'utf8');
+  const toml = readFileSync(CONFIG_TOML, 'utf8');
   const grab = (k: string): string => {
     const m = toml.match(new RegExp(`^\\s*${k}\\s*=\\s*"([^"]*)"`, 'm'));
     return m ? m[1]! : '';
@@ -287,7 +294,7 @@ async function main(): Promise<void> {
   console.log(detail);
 
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-  const out = 'D:\\coding\\anti-bubble\\docs\\e2e-result.png';
+  const out = join(REPO, 'docs', 'e2e-result.png');
   writeFileSync(out, Buffer.from(shot.data, 'base64'));
   console.log('\n截图已存:', out);
 

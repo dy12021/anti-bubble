@@ -18,20 +18,20 @@
 ## 你的文件所有权（只准碰这些）
 
 **创建：**
-- `D:\coding\anti-bubble\src\pipeline\types.ts`
-- `D:\coding\anti-bubble\src\pipeline\wordlist.ts`
-- `D:\coding\anti-bubble\src\pipeline\coarse.ts`
-- `D:\coding\anti-bubble\src\pipeline\judge.ts`
-- `D:\coding\anti-bubble\src\pipeline\pipeline.ts`
-- `D:\coding\anti-bubble\src\pipeline\wordlist-service.ts`
-- `D:\coding\anti-bubble\src\pipeline\verdict-cache.ts`
-- `D:\coding\anti-bubble\src\bg\pipeline-service.ts`
-- `D:\coding\anti-bubble\tests\unit\pipeline-wordlist.test.ts`
-- `D:\coding\anti-bubble\tests\unit\pipeline-coarse.test.ts`
-- `D:\coding\anti-bubble\tests\unit\pipeline-judge.test.ts`
-- `D:\coding\anti-bubble\tests\unit\pipeline.test.ts`
-- `D:\coding\anti-bubble\tests\unit\pipeline-wordlist-service.test.ts`
-- `D:\coding\anti-bubble\tests\unit\pipeline-verdict-cache.test.ts`
+- `<repo>\src\pipeline\types.ts`
+- `<repo>\src\pipeline\wordlist.ts`
+- `<repo>\src\pipeline\coarse.ts`
+- `<repo>\src\pipeline\judge.ts`
+- `<repo>\src\pipeline\pipeline.ts`
+- `<repo>\src\pipeline\wordlist-service.ts`
+- `<repo>\src\pipeline\verdict-cache.ts`
+- `<repo>\src\bg\pipeline-service.ts`
+- `<repo>\tests\unit\pipeline-wordlist.test.ts`
+- `<repo>\tests\unit\pipeline-coarse.test.ts`
+- `<repo>\tests\unit\pipeline-judge.test.ts`
+- `<repo>\tests\unit\pipeline.test.ts`
+- `<repo>\tests\unit\pipeline-wordlist-service.test.ts`
+- `<repo>\tests\unit\pipeline-verdict-cache.test.ts`
 
 **不要碰**：`src/shared/*`、`src/bg/storage.ts`、`src/bg/llm/*`、`src/bili/*`、`src/profile/*`、
 `src/adapters/*`、`src/actions/*`、`src/recommend/*`、`src/content/*`、`src/bg/router.ts`、`src/bg/index.ts`。

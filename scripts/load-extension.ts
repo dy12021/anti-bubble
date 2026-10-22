@@ -5,9 +5,14 @@
  * --load-extension 在稳定版彻底失效。唯一可行的自动化路径是 CDP 的
  * Extensions 域（需要 --enable-unsafe-extension-debugging）。
  */
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
-const DIST = process.env.EXT_DIST ?? 'D:\\coding\\anti-bubble\\dist';
+const DIST = process.env.EXT_DIST ?? join(REPO, 'dist');
 
 async function httpJson(path: string): Promise<any> {
   const res = await fetch(`http://${HOST}:${PORT}${path}`);

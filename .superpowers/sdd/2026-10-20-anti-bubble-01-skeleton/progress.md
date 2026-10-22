@@ -1,6 +1,6 @@
 # SDD ledger — plan: docs/superpowers/plans/2026-10-20-anti-bubble-01-skeleton.md
 
-仓库：D:\coding\anti-bubble
+仓库：<repo>
 分支：feature/anti-bubble-v1（基点 127bcf5）
 开始时间：2026-10-20
 

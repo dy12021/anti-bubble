@@ -5,6 +5,11 @@
  *
  * 判定方法：在页面上挂一个 window 上的标记，点完之后标记还在 = 没重载（SPA）。
  */
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 
@@ -73,7 +78,7 @@ class Cdp {
 async function main(): Promise<void> {
   const version = await httpJson('/json/version');
   const browser = await Cdp.connect(version.webSocketDebuggerUrl);
-  await browser.send('Extensions.loadUnpacked', { path: 'D:\\coding\\anti-bubble\\dist' });
+  await browser.send('Extensions.loadUnpacked', { path: join(REPO, 'dist') });
 
   const targets = (await httpJson('/json/list')) as any[];
   const page = targets.find((t) => t.type === 'page' && !t.url.startsWith('chrome-extension://'));

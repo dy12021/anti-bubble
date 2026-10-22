@@ -5,10 +5,15 @@
  *   SELECTOR='.ab-comments'  OUT='e2e-comment-panel.png' node ... capture-ui.ts
  *   SELECTOR='.ab-recommend' OUT='e2e-recommend.png'     node ... capture-ui.ts
  */
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 const SELECTOR = process.env.SELECTOR ?? '.ab-comments';
-const OUT = process.env.OUT ?? 'D:\\coding\\anti-bubble\\docs\\e2e-ui.png';
+const OUT = process.env.OUT ?? join(REPO, 'docs', 'e2e-ui.png');
 
 async function httpJson(path: string): Promise<any> {
   const res = await fetch(`http://${HOST}:${PORT}${path}`);

@@ -2,14 +2,21 @@
  * 往扩展的 chrome.storage.local 注入 LLM 配置（端到端验证用）。
  *
  * 用法：node --experimental-strip-types scripts/set-llm-config.ts
- * 从 D:\coding\llm-quant\config.toml 读 base_url / api_key / model，
+ * 从 llm-quant 的 config.toml 读 base_url / api_key / model
+ * （默认读同级目录 ../llm-quant/config.toml，可用环境变量 LLM_CONFIG 覆盖），
  * 写进扩展的 storage。不打印 key 明文。
  */
 import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+// LLM 配置来源：默认读同级目录下的 llm-quant/config.toml，可用环境变量覆盖。
+const CFG = process.env.LLM_CONFIG ?? join(REPO, '..', 'llm-quant', 'config.toml');
 
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
-const CFG = 'D:\\coding\\llm-quant\\config.toml';
 
 const text = readFileSync(CFG, 'utf8');
 function grab(key: string): string {

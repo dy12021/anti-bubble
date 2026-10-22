@@ -4,6 +4,11 @@
  * 推理模型每次调用 10-60 秒，词表 + 精判两次调用，所以要等 2-3 分钟。
  */
 import { writeFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
@@ -144,7 +149,7 @@ async function main(): Promise<void> {
   console.log(detail);
 
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' });
-  const out = 'D:\\coding\\anti-bubble\\docs\\e2e-result.png';
+  const out = join(REPO, 'docs', 'e2e-result.png');
   writeFileSync(out, Buffer.from(shot.data, 'base64'));
   console.log('\n截图已存:', out);
 

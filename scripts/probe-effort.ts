@@ -3,12 +3,19 @@
  * 词表是「抽取 + 生成短语」这种简单活，深度思考纯属浪费时间和钱。
  */
 import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildListWordlistPrompt } from '../src/pipeline/wordlist';
 import { createLlmClient } from '../src/bg/llm/client';
 import type { LlmConfig } from '../src/shared/types';
 
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+// LLM 配置来源：默认读同级目录下的 llm-quant/config.toml，可用环境变量覆盖。
+const CONFIG_TOML = process.env.LLM_CONFIG ?? join(REPO, '..', 'llm-quant', 'config.toml');
+
 function readLlmConfig(): LlmConfig {
-  const raw = readFileSync('D:\\coding\\llm-quant\\config.toml', 'utf8');
+  const raw = readFileSync(CONFIG_TOML, 'utf8');
   const lines: string[] = [];
   let inLlm = false;
   for (const line of raw.split(/\r?\n/)) {

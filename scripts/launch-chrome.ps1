@@ -7,11 +7,32 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$chrome = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-$dist = "D:\coding\anti-bubble\dist"
+
+# Repo root is derived from this script's own location, so the script works
+# no matter where the repo is cloned or which drive letter it lives on.
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$dist = Join-Path $repoRoot 'dist'
 
 if (-not (Test-Path $dist)) {
   Write-Host "dist missing - run npm run build first" -ForegroundColor Red
+  exit 1
+}
+
+# Chrome executable is resolved from environment variables (never a hard
+# coded drive letter), trying every known install location in turn.
+$baseDirs = @()
+foreach ($v in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:LOCALAPPDATA)) {
+  if ($v) { $baseDirs += $v }
+}
+$candidates = @()
+foreach ($base in $baseDirs) {
+  $candidates += (Join-Path $base 'Google\Chrome\Application\chrome.exe')
+}
+$chrome = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $chrome) {
+  Write-Host "chrome not found - looked in:" -ForegroundColor Red
+  foreach ($c in $candidates) { Write-Host "  $c" }
   exit 1
 }
 

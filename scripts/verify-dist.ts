@@ -8,8 +8,11 @@
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const DIST = 'D:\\coding\\anti-bubble\\dist';
+// 仓库根目录：从脚本自身位置推算，换机器/换盘符都不用改代码。
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
+const DIST = join(REPO, 'dist');
 const problems: string[] = [];
 
 function readManifest(): any {

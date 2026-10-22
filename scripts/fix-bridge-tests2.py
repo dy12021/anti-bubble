@@ -1,7 +1,10 @@
 """修正：带 url: 的是请求(kind:'req')，带 ok: 的是响应(kind:'res')。"""
+import os
 import re
 
-PATH = r"D:\coding\anti-bubble\tests\unit\page-bridge.test.ts"
+# Target file is resolved relative to this script's own location.
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PATH = os.path.join(REPO, "tests", "unit", "page-bridge.test.ts")
 
 with open(PATH, "r", encoding="utf-8") as f:
     text = f.read()
