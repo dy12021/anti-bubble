@@ -1,5 +1,7 @@
+
+export {};
 (async () => {
-  const out = {};
+  const out: Record<string, any> = {};
   try {
     const res = await fetch('https://api.bilibili.com/x/web-interface/nav', {
       credentials: 'include',

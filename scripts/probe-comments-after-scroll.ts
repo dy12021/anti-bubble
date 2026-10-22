@@ -1,3 +1,5 @@
+
+export {};
 (async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -11,18 +13,18 @@
   window.scrollBy(0, 400);
   await sleep(3000);
 
-  function deepCount(selector) {
+  function deepCount(selector: string) {
     let n = 0;
-    const walk = (root) => {
+    const walk = (root: Document | ShadowRoot) => {
       n += root.querySelectorAll(selector).length;
       for (const el of root.querySelectorAll('*')) if (el.shadowRoot) walk(el.shadowRoot);
     };
     walk(document);
     return n;
   }
-  function deepFirst(selector) {
-    const found = [];
-    const walk = (root) => {
+  function deepFirst(selector: string) {
+    const found: any[] = [];
+    const walk = (root: Document | ShadowRoot) => {
       for (const el of root.querySelectorAll(selector)) {
         if (found.length < 2) {
           found.push({
@@ -30,7 +32,7 @@
             id: el.id,
             rpid: el.getAttribute?.('data-rpid') ?? el.getAttribute?.('data-id') ?? null,
             text: (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 70),
-            attrs: Array.from(el.attributes ?? []).map((a) => a.name).slice(0, 12),
+            attrs: Array.from(el.attributes).map((a) => a.name).slice(0, 12),
           });
         }
       }

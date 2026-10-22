@@ -4,6 +4,8 @@
  * 观看时长追踪只算「页面可见」的时候——如果自动化环境里
  * 页面一直算 hidden，计时就永远不走。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

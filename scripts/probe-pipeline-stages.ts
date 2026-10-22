@@ -8,6 +8,8 @@
  * 即使这次抓到的评论全是无害内容（粗筛正常放行），
  * ①② 也能证明 LLM 那一段真的通了。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

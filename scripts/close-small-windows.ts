@@ -2,6 +2,8 @@
  * 关闭遗留的小窗口 target（视口小于 700x500 的独立页面）。
  * 独立成脚本，方便反复调用。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9334';
 

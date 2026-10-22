@@ -1,5 +1,7 @@
+
+export {};
 (async () => {
-  const out = {};
+  const out: Record<string, any> = {};
   try {
     out.hasOpener = !!window.opener;
     out.openerIsBili = !!(window.opener && /bilibili/.test(window.opener.location?.href ?? ''));
@@ -17,7 +19,7 @@
     out.iframeCount = document.querySelectorAll('iframe').length;
     out.parentIsSelf = window.parent === window;
     out.topIsSelf = window.top === window;
-    out.topHref = (() => { try { return window.top.location.href; } catch { return 'cross-origin'; } })();
+    out.topHref = (() => { try { return window.top ? window.top.location.href : '(no top)'; } catch { return 'cross-origin'; } })();
     // B 站自己有没有在页面上留「打开新窗口」的痕迹
     out.navPanelExists = !!document.querySelector('[class*="nav-panel"], [class*="header-nav"], .bili-mini-header');
   } catch (e) {

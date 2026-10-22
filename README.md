@@ -155,9 +155,15 @@ B 站对未登录用户屏蔽评论（API 返回 -403），画像也需要登录
 ```bash
 npm run dev        # watch 构建
 npm run test       # 单元测试
-npm run typecheck  # 类型检查
+npm run typecheck  # 类型检查（源码 + 验证脚本，两遍）
 npm run scan:secrets  # 扫仓库里的本机绝对路径 / 密钥 / 邮箱（开源前跑）
 ```
+
+`npm run typecheck` 跑两遍：`tsc --noEmit` 管扩展源码（浏览器环境，
+**不引入 node 类型**，免得 `src/` 里不小心用了 Node API），
+`tsc --noEmit -p tsconfig.scripts.json` 管 `scripts/` 下的真机验证脚本。
+两者分开是有必要的——验证脚本自己也出过 bug，
+而它们不纳入检查的话，`npm run typecheck` 全绿只是**看起来**没问题。
 
 ### 真机验证
 

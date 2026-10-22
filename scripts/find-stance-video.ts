@@ -4,6 +4,8 @@
  * 反向推荐需要视频本身有立场（不然「相反」无从谈起）。
  * 所以先在 B 站搜一个有争议的话题，取前几个结果出来挑。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 const QUERY = process.env.SEARCH_QUERY ?? '人工智能 取代 人类 工作';

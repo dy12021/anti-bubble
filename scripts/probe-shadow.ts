@@ -1,14 +1,16 @@
+
+export {};
 (() => {
   const app = document.getElementById('commentapp');
-  const out = { hasApp: !!app };
+  const out: Record<string, any> = { hasApp: !!app };
   if (!app) return JSON.stringify(out);
 
   out.appChildTags = Array.from(app.children).map((c) => c.tagName);
   out.appChildCount = app.children.length;
 
   // 逐层看 app 的后代里有没有闭合 shadow root
-  const chain = [];
-  let node = app;
+  const chain: any[] = [];
+  let node: Element | null = app;
   for (let depth = 0; depth < 5 && node; depth++) {
     const child = node.firstElementChild;
     if (!child) { chain.push({ depth, stop: 'no child' }); break; }

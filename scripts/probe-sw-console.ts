@@ -2,6 +2,8 @@
  * 查 service worker 的控制台错误 + 原始 storage 键。
  * 用于定位「词表没生成」到底是因为 video 为 null、LLM 报错，还是消息没到。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

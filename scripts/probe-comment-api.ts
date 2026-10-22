@@ -4,8 +4,10 @@
  * 这决定了视频页的方案：DOM 读不到（closed shadow root），
  * 只能走 API + 自渲染评论区。
  */
+export {};
+
 (async () => {
-  const out = {};
+  const out: Record<string, any> = {};
 
   // --- WBI 签名（与扩展里同一套算法）---
   const MIXIN_KEY_ENC_TAB = [
@@ -16,7 +18,7 @@
   ];
 
   function md5(input) {
-    const bytes = [];
+    const bytes: number[] = [];
     for (let i = 0; i < input.length; i++) {
       const c = input.charCodeAt(i);
       if (c < 0x80) bytes.push(c);
@@ -77,7 +79,7 @@
   for (const i of MIXIN_KEY_ENC_TAB) { if (i < raw.length) mixin += raw[i]; if (mixin.length === 32) break; }
 
   const sign = (params) => {
-    const s = {};
+    const s: Record<string, any> = {};
     for (const [k, v] of Object.entries(params)) s[k] = String(v).replace(/[!'()*]/g, '');
     s['wts'] = Math.floor(Date.now() / 1000);
     const q = Object.keys(s).sort()

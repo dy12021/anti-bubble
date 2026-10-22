@@ -1,10 +1,12 @@
+
+export {};
 (async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(1500);
 
   const panel = document.querySelector('[data-ab-prefix="ab-comments"]');
   const native = document.getElementById('commentapp');
-  const out = {
+  const out: Record<string, any> = {
     url: location.href.slice(0, 60),
     panelExists: !!panel,
     nativeHidden: native ? native.style.display === 'none' : null,

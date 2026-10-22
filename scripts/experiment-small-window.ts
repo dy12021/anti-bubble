@@ -4,6 +4,8 @@
  * - 不再出现 -> 与扩展无关（小窗是浏览器/会话恢复留下的）
  * - 又出现   -> 是扩展干的，真 bug
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9334';
 

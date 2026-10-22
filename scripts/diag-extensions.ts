@@ -2,6 +2,8 @@
  * 诊断：扩展到底有没有被 Chrome 加载。
  * 列出所有 target，并尝试在 chrome://extensions 页面里读扩展列表。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

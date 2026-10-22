@@ -1,6 +1,8 @@
 /**
  * 在 service worker 里手动跑一次 JUDGE_ITEMS 流程，看真实报错。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

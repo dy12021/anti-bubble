@@ -1,3 +1,5 @@
+
+export {};
 (async () => {
   const st = await chrome.storage.local.get(null);
   const c = st['llmConfig'];

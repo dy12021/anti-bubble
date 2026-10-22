@@ -4,6 +4,8 @@
  * 重点怀疑视频页——B 站新版评论区在 Shadow DOM 里，
  * 普通的 querySelector 穿不过去，会导致「一条评论都抽不到」。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

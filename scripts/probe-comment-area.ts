@@ -1,6 +1,8 @@
+
+export {};
 (() => {
   const app = document.getElementById('commentapp');
-  const out = {};
+  const out: Record<string, any> = {};
   if (!app) return JSON.stringify({ err: 'no #commentapp' });
 
   const bili = app.querySelector('bili-comments');

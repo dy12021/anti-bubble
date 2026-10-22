@@ -1,5 +1,7 @@
+
+export {};
 (async () => {
-  const out = {};
+  const out: Record<string, any> = {};
   try {
     const st = await chrome.storage.local.get(null);
     out.storageKeys = Object.keys(st);

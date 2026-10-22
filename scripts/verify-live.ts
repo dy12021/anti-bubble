@@ -3,6 +3,8 @@
  *
  * 流程：连上页面 → 开启 Runtime/Log → 重载 → 收集控制台 → 定位我们的 SW → 查它的状态。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

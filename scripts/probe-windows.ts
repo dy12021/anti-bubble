@@ -2,6 +2,8 @@
  * 查 Edge 里每个页面 target 对应哪个原生窗口、窗口多大。
  * 用来确认「小窗口叠在大窗口上」到底是两个独立窗口，还是同一个窗口内的浮层。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9334';
 

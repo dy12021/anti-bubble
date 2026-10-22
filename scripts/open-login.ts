@@ -2,6 +2,8 @@
  * 在测试浏览器里打开 B 站登录页，供用户扫码登录。
  * 登录后 cookie 落在该 profile 里，后续端到端验证都用它。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

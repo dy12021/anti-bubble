@@ -3,6 +3,8 @@
  *
  * 必须「连上再刷新」：Runtime.enable 不会回放已经产生的控制台消息。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 const URL_ = process.env.TARGET_URL ?? 'https://www.bilibili.com/video/BV1GJ411x7h7/';

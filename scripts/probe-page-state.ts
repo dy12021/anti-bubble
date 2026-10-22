@@ -3,6 +3,8 @@
  *
  * 用法：node --experimental-strip-types scripts/probe-page-state.ts
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 

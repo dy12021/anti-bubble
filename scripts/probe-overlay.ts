@@ -2,6 +2,8 @@
  * 识别页面上那个浮层小窗口是什么。
  * 用 DOM.getNodeForLocation 反查坐标处的元素，再看它的 class/id/所属脚本。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 const X = Number(process.env.PROBE_X ?? 470);

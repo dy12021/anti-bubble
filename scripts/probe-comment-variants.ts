@@ -4,6 +4,8 @@
  * 背景：裸调 /x/v2/reply/wbi/main 返回 -403 访问权限不足。
  * 逐项加东西，看哪个是关键。
  */
+export {};
+
 (async () => {
   const MIXIN_KEY_ENC_TAB = [
     46,47,18,2,53,8,23,32,15,50,10,31,58,3,45,35,27,43,5,49,
@@ -12,7 +14,7 @@
     36,20,34,44,52,
   ];
   function md5(input) {
-    const bytes = [];
+    const bytes: number[] = [];
     for (let i = 0; i < input.length; i++) {
       const c = input.charCodeAt(i);
       if (c < 0x80) bytes.push(c);
@@ -47,7 +49,7 @@
     return hex;
   }
 
-  const out = { steps: [] };
+  const out: Record<string, any> = { steps: [] };
   const get = async (url, headers = {}) => {
     const r = await fetch(url, { credentials: 'include', headers: { Accept: 'application/json', ...headers } });
     const t = await r.text();
@@ -62,7 +64,7 @@
   for (const i of MIXIN_KEY_ENC_TAB) { if (i < rawKey.length) mixin += rawKey[i]; if (mixin.length === 32) break; }
 
   const sign = (params) => {
-    const s = {};
+    const s: Record<string, any> = {};
     for (const [k, v] of Object.entries(params)) s[k] = String(v).replace(/[!'()*]/g, '');
     s['wts'] = Math.floor(Date.now() / 1000);
     const q = Object.keys(s).sort().map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(s[k])}`).join('&');
@@ -75,7 +77,7 @@
   out.aid = aid;
 
   // 拿 w_webid 指纹
-  let spi = null;
+  let spi: any = null;
   try {
     spi = await get('https://api.bilibili.com/x/frontend/finger/spi');
     out.spiCode = spi.code;
@@ -94,7 +96,7 @@
     const p = sign(v.params);
     const q = Object.keys(p).sort().map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(p[k])}`).join('&');
     const r = await get('https://api.bilibili.com/x/v2/reply/wbi/main?' + q, v.headers);
-    const rec = {
+    const rec: Record<string, any> = {
       name: v.name,
       code: r.code,
       msg: r.message,

@@ -41,8 +41,22 @@ function log(s: string): void {
   console.log(`[${new Date().toISOString().slice(11, 19)}] ${s}`);
 }
 
-/** 从 llm-quant 的 config.toml 读 [llm] 段。Key 只进内存，不打印。 */
-function readLlmConfig(): { provider: string; baseUrl: string; apiKey: string; model: string; timeoutMs: number; maxTokens: number } {
+/**
+ * 从 llm-quant 的 config.toml 读 [llm] 段。Key 只进内存，不打印。
+ *
+ * 注意返回类型里**必须带上 reasoningEffort**：
+ * 少了它，TS 的多余属性检查会把这个字段判成「不在契约里」，
+ * 而运行时它其实是会传给扩展的——类型契约和实际行为对不上，最容易骗人。
+ */
+function readLlmConfig(): {
+  provider: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+  maxTokens: number;
+  reasoningEffort?: 'low' | 'medium' | 'high';
+} {
   const raw = readFileSync(CONFIG_TOML, 'utf8');
   // 只取 [llm] 段内的键
   const section = raw.split(/\r?\n/).filter((l) => !/^\s*\[/.test(l) || /^\s*\[llm\]/.test(l));

@@ -1,6 +1,8 @@
 /**
  * 探针：视频页标题的 DOM 祖先链，找一个「插进去不破坏布局」的位置。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 
@@ -68,7 +70,7 @@ async function main(): Promise<void> {
         children: el.children.length,
       };
     };
-    const chain = [];
+    const chain: any[] = [];
     let el = document.querySelector('.video-title');
     for (let i = 0; el && i < 6; i++) { chain.push(desc(el)); el = el.parentElement; }
 

@@ -19,6 +19,8 @@
  *
  * 页面索引来自 `targets` 输出里的 [page N]。
  */
+export {};
+
 
 const HOST = process.env.CDP_HOST ?? '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9222';

@@ -2,6 +2,8 @@
  * 读扩展的 storage：LLM 配置 + 画像 + 词表缓存 + 判定缓存摘要。
  * 只读，不发任何请求。
  */
+export {};
+
 const HOST = '127.0.0.1';
 const PORT = process.env.CDP_PORT ?? '9333';
 const EXT_ID = process.env.EXT_ID ?? 'jlfdpgneomllhbpaiejjhoigophhejid';
