@@ -1,5 +1,5 @@
 import type {
-  VERDICT_ACTIONS, MODES, PAGE_TYPES, REASON_CODES,
+  VERDICT_ACTIONS, MODES, PAGE_TYPES, REASON_CODES, JUDGE_LEVELS,
 } from './constants';
 
 export type PageType = (typeof PAGE_TYPES)[number];
@@ -7,6 +7,8 @@ export type ItemKind = 'video' | 'comment';
 export type VerdictAction = (typeof VERDICT_ACTIONS)[number];
 export type Mode = (typeof MODES)[number];
 export type VerdictReasonCode = (typeof REASON_CODES)[number];
+/** 判定档位：全部 LLM / 关键词初筛 / 仅关键词 */
+export type JudgeLevel = (typeof JUDGE_LEVELS)[number];
 
 /** 内容所处的上下文。判定需要它来理解「这条评论在回应什么」。 */
 export interface ItemContext {
@@ -47,6 +49,16 @@ export interface Verdict {
   confidence: number;
   /** 是否可撤销。pass 不可撤销。 */
   revocable: boolean;
+  /**
+   * 命中画像里的**哪一个**「不喜欢」标签。
+   *
+   * 只有本地画像匹配（reasonCode = `dislike_match`）才有值——
+   * LLM 判出来的折叠不知道对应哪个标签，就不填。
+   *
+   * 它的用途：用户撤销屏蔽时，页面要能告诉后台「把这个标签从画像里去掉」。
+   * 没有它就只能说「撤销」，没法更新画像。
+   */
+  matchedTag?: string;
 }
 
 /** 画像的输入样本：一条观看/收藏记录。 */
@@ -132,6 +144,16 @@ export interface Settings {
   collectHistory: boolean;
   /** 判定置信度阈值，低于此值按 pass 处理 */
   confidenceThreshold: number;
+  /**
+   * 判定档位：内容判定要走多重的流程。
+   *
+   * - `all`：全部送 LLM 精判
+   * - `coarse`：词表粗筛后再送 LLM（默认）
+   * - `keyword`：只用内置关键词，不调 LLM
+   *
+   * 默认 `coarse`（见 constants 的 DEFAULT_JUDGE_LEVEL）。
+   */
+  judgeLevel: JudgeLevel;
   /**
    * 反向推荐的触发条件：视频累计观看多少秒之后才推相反观点。
    *

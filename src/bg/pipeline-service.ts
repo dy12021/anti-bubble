@@ -1,32 +1,45 @@
-import type { ContentItem, UserProfile, Mode, Verdict } from '../shared/types';
+import type { ContentItem, UserProfile, Mode, Verdict, JudgeLevel } from '../shared/types';
 import type { LlmClient } from './llm/client';
 import { Pipeline } from '../pipeline/pipeline';
 import { WordlistService } from '../pipeline/wordlist-service';
 import { VerdictCache, verdictContextKey } from '../pipeline/verdict-cache';
-import { getWhitelist } from './storage';
+import { KEYWORD_LIB_VERSION } from '../pipeline/keyword';
+import { getWhitelist, getProfile } from './storage';
 import { ProfileService } from './profile-service';
 import type { Subject, Wordlist, PipelineContext } from '../pipeline/types';
 
 /**
  * service worker 侧的判定服务。
+ *
  * content script 只管抽 DOM 与执行动作，判定全在这里。
  */
 export class PipelineService {
   private readonly wordlists: WordlistService;
   private readonly cache = new VerdictCache();
 
-  constructor(private readonly client: LlmClient) {
+  /**
+   * @param client 可以是 null：「仅关键词」档不需要 LLM。
+   */
+  constructor(private readonly client: LlmClient | null) {
     this.wordlists = new WordlistService(client);
   }
 
   async judge(
     items: ContentItem[],
-    opts: { mode: Mode; subject: Subject | null; threshold: number },
+    opts: { mode: Mode; subject: Subject | null; threshold: number; judgeLevel?: JudgeLevel },
   ): Promise<Verdict[]> {
+    const level: JudgeLevel = opts.judgeLevel ?? 'coarse';
+
     // 画像用「懒刷新」：没有就归纳，过期（>24h）就重新归纳。
     // 早先这里直接 getProfile()，画像**用多久都不会更新**——
     // PROFILE_MAX_AGE_MS 那个 24 小时过期机制在生产路径上从没生效过。
-    const profile: UserProfile | null = await new ProfileService(this.client).getOrRefresh();
+    //
+    // 「仅关键词」档**不做懒刷新**：归纳画像要调 LLM，
+    // 那一档的承诺是「一次 LLM 都不调」，所以只读已存的画像。
+    const profile: UserProfile | null =
+      level === 'keyword'
+        ? await getProfile()
+        : await new ProfileService(this.client).getOrRefresh();
     const whitelist = await getWhitelist();
 
     const pipeline = new Pipeline({
@@ -48,6 +61,7 @@ export class PipelineService {
       profile,
       subject: opts.subject,
       threshold: opts.threshold,
+      judgeLevel: level,
     };
 
     // ① 先拿词表。
@@ -58,22 +72,36 @@ export class PipelineService {
     //    一条「因为词表是空的所以全部放行」的假判定会被永久缓存，
     //    之后即使词表正常了也命中缓存早退 → LLM 再也不会被调用 →
     //    插件看起来「在运行但什么都不做」。这个坑真机验证时踩过。
+    //
+    //    「仅关键词」档不取词表：生成词表本身就是一次 LLM 调用，
+    //    那一档要的是零调用。判据是内置词库，缓存键用词库版本 + 画像版本。
     let wordlist: Wordlist;
-    try {
-      wordlist = await pipeline.resolveWordlist(ctx);
-    } catch {
+    let contextWordlistKey: string;
+    if (level === 'keyword') {
       wordlist = { patterns: [], stance: '', oppositeKeywords: [], cacheKey: 'none' };
+      contextWordlistKey = `keyword:${KEYWORD_LIB_VERSION}:${profile?.updatedAt ?? ''}`;
+    } else {
+      try {
+        wordlist = await pipeline.resolveWordlist(ctx);
+      } catch {
+        wordlist = { patterns: [], stance: '', oppositeKeywords: [], cacheKey: 'none' };
+      }
+      // 档位也进缓存键：coarse 与 all 的判据不同，
+      // 换档后旧判定不能接着用。
+      contextWordlistKey = `${level}:${wordlist.cacheKey}`;
     }
     ctx.wordlist = wordlist;
 
     // 空词表 = 粗筛压根没跑成。这种「放行」不是真正的判定，**不入缓存**。
-    const wordlistUsable = wordlist.patterns.length > 0;
+    // 只对 coarse 档成立：all 档的词表只是 prompt 里的语境，
+    // keyword 档的判据是内置词库——两者都不该因为词表为空而丢缓存。
+    const wordlistUsable = level !== 'coarse' || wordlist.patterns.length > 0;
 
-    // ② 查缓存（键里带词表版本）
+    // ② 查缓存（键里带词表版本与档位）
     const cached = new Map<string, Verdict>();
     const toJudge: ContentItem[] = [];
     for (const item of items) {
-      const key = verdictContextKey(item, opts.mode, wordlist.cacheKey);
+      const key = verdictContextKey(item, opts.mode, contextWordlistKey);
       const hit = await this.cache.get(item.id, key);
       if (hit) {
         cached.set(item.id, hit);
@@ -96,7 +124,7 @@ export class PipelineService {
       if (!item) continue;
       await this.cache.set(
         v.itemId,
-        verdictContextKey(item, opts.mode, wordlist.cacheKey),
+        verdictContextKey(item, opts.mode, contextWordlistKey),
         v,
       );
     }

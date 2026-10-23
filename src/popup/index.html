@@ -59,6 +59,27 @@
       </label>
     </section>
 
+    <!-- 判定档位 -->
+    <section class="block">
+      <h2>判定档位</h2>
+      <p class="hint block-hint">决定「哪些内容要屏蔽」怎么判。三档从准到省：</p>
+      <div class="seg" role="radiogroup" aria-label="判定档位">
+        <button type="button" class="seg-btn" data-level="all" role="radio">
+          <span class="seg-title">全部 LLM</span>
+          <span class="seg-desc">每条都判，最准</span>
+        </button>
+        <button type="button" class="seg-btn" data-level="coarse" role="radio">
+          <span class="seg-title">关键词初筛</span>
+          <span class="seg-desc">命中才判，默认</span>
+        </button>
+        <button type="button" class="seg-btn" data-level="keyword" role="radio">
+          <span class="seg-title">仅关键词</span>
+          <span class="seg-desc">零 LLM 调用</span>
+        </button>
+      </div>
+      <p class="hint" id="levelHint" style="margin-top: 8px"></p>
+    </section>
+
     <!-- LLM 配置 -->
     <section class="block">
       <h2>LLM 配置</h2>
@@ -130,12 +151,17 @@
     <section class="block">
       <h2>个人画像</h2>
       <div id="profileBox" class="profile-box">读取中…</div>
+      <div id="profileOverrides" class="collect-report"></div>
       <div id="collectReport" class="collect-report"></div>
       <div class="row">
         <button type="button" class="btn" id="refreshProfile">重新归纳画像</button>
         <button type="button" class="btn btn-ghost" id="clearProfile">清空画像</button>
       </div>
       <p class="status" id="profileStatus"></p>
+      <p class="hint" style="margin-top: 6px">
+        画像里的「不喜欢」是归纳出来的，会错。页面上撤销屏蔽时，
+        折叠条上还有「我喜欢这类」——点了就把这个标签去掉、把题材加进兴趣。
+      </p>
     </section>
 
     <!-- 屏蔽记录 -->

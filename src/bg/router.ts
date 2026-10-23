@@ -1,14 +1,16 @@
-import { MSG, type MsgRequest, type MsgResponse } from '../shared/messages';
-import type { ContentItem, LlmConfig, Mode, SettingsPatch, UserProfileInput, CollectReport } from '../shared/types';
+import { MSG, type MsgRequest, type MsgResponse, type RevokePayload } from '../shared/messages';
+import type { ContentItem, LlmConfig, Mode, SettingsPatch, UserProfileInput, CollectReport, UserProfile } from '../shared/types';
 import {
-  getSettings, saveSettings, getProfile, clearProfile,
+  getSettings, saveSettings, getProfile, saveProfile, clearProfile,
   getLlmConfig, saveLlmConfig, getWhitelist, addToWhitelist,
   getJson, setJson, getLastError,
+  getProfileOverrides, saveProfileOverrides,
 } from './storage';
-import { STORAGE_KEYS } from '../shared/constants';
+import { STORAGE_KEYS, DEFAULT_JUDGE_LEVEL } from '../shared/constants';
 import { createLlmClient } from './llm/client';
 import { ProfileService } from './profile-service';
 import { PipelineService } from './pipeline-service';
+import { applyProfileFeedback, recordProfileOverride } from '../profile/feedback';
 import { WordlistService } from '../pipeline/wordlist-service';
 import { judgeOpposition } from '../recommend/opposition';
 import type { SearchItem } from '../bili/types';
@@ -60,6 +62,9 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
 
       case MSG.GET_PROFILE:
         return { id, ok: true, data: await getProfile() };
+
+      case MSG.GET_PROFILE_OVERRIDES:
+        return { id, ok: true, data: await getProfileOverrides() };
 
       case MSG.CLEAR_PROFILE: {
         const cfg = await getLlmConfig();
@@ -197,10 +202,36 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         return { id, ok: true, data: await getLastError() };
 
       case MSG.REVOKE: {
-        const itemId = (req.payload as { itemId?: string })?.itemId;
+        const p = req.payload as RevokePayload | undefined;
+        const itemId = p?.itemId;
         if (!itemId) return { id, ok: false, error: '缺少 itemId' };
         await addToWhitelist(itemId);
-        return { id, ok: true, data: { revoked: itemId } };
+
+        // 顺手更新画像：用户点「我喜欢这类」= 「这条其实想看」。
+        // 画像里的「不喜欢」是归纳出来的，会错；不修正的话同题材还会被折叠。
+        let profile: UserProfile | null = null;
+        if (p?.updateProfile) {
+          const feedback = {
+            matchedTag: p.matchedTag,
+            text: p.text,
+            kind: p.kind,
+          };
+          const cur = await getProfile();
+          if (cur) {
+            profile = applyProfileFeedback(cur, feedback);
+            await saveProfile(profile);
+          }
+          // **纠正要单独记一份**：画像每 24 小时会被自动归纳重算，
+          // 用户的显式纠正不能被顶掉（详见 ProfileOverrides 的说明）。
+          const overrides = await getProfileOverrides();
+          const next = recordProfileOverride(overrides, feedback);
+          await saveProfileOverrides(next);
+        }
+
+        return {
+          id, ok: true,
+          data: { revoked: itemId, profileUpdated: profile !== null, profile },
+        };
       }
 
       case MSG.GET_BLOCKED_LOG:
@@ -241,12 +272,18 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         const items = p?.items ?? [];
         if (items.length === 0) return { id, ok: true, data: { verdicts: [] } };
 
-        const cfg = await getLlmConfig();
-        if (!cfg) return { id, ok: true, data: { verdicts: [] } };
-
         const settings = await getSettings();
         const mode = p?.mode ?? settings.mode;
-        const client = createLlmClient(cfg);
+        // 判定档位：全部 LLM / 关键词初筛 / 仅关键词。
+        // 「仅关键词」档**不需要 LLM**——没配 Key 也能用。
+        const judgeLevel = settings.judgeLevel ?? DEFAULT_JUDGE_LEVEL;
+
+        const cfg = await getLlmConfig();
+        const client = cfg ? createLlmClient(cfg) : null;
+        if (!client && judgeLevel !== 'keyword') {
+          // 没配 LLM 又不是「仅关键词」档 → 判不了，全部放行。
+          return { id, ok: true, data: { verdicts: [] } };
+        }
 
         // 判定语境由 content script 传进来——
         // service worker 自己发不了 B 站请求（拿不到 SESSDATA），
@@ -256,7 +293,7 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
         // 内容会全部原样放行（看起来就是「插件没反应」）。
         const subject = p?.subject ?? null;
         console.info(
-          `[anti-bubble] JUDGE_ITEMS 收到 ${items.length} 条，语境=${
+          `[anti-bubble] JUDGE_ITEMS 收到 ${items.length} 条，档位=${judgeLevel}，语境=${
             subject
               ? subject.kind === 'video'
                 ? `视频(bvid=${subject.video.bvid},aid=${subject.video.aid ?? '-'},title=${String(subject.video.title).slice(0, 20)})`
@@ -270,6 +307,7 @@ export async function handleMessage(req: MsgRequest): Promise<MsgResponse> {
           mode,
           subject,
           threshold: settings.confidenceThreshold,
+          judgeLevel,
         });
 
         // 记屏蔽日志（供 popup 查看）

@@ -10,6 +10,7 @@ const settings: Settings = {
   masterEnabled: true,
   collectHistory: true,
   confidenceThreshold: 0.7,
+  judgeLevel: 'coarse',
 };
 
 function comment(rpid: number, text: string, like = 0): CommentItem {

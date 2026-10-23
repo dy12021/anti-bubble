@@ -97,6 +97,42 @@ describe('画像服务', () => {
     expect(await s.get()).toBeNull();
   });
 
+  it('clear 后手动纠正也一起清掉', async () => {
+    store['profileOverrides'] = { removedDislikes: ['x'], addedInterests: [] };
+    const s = new ProfileService(client(), () => NOW);
+    await s.clear();
+    expect(store['profileOverrides']).toBeUndefined();
+  });
+
+  /**
+   * 回归防护：用户手动纠正过的东西，不能被自动归纳顶掉。
+   *
+   * 画像每 24 小时从观看样本重算一遍——LLM 很可能又把
+   * 「游戏实况」写回 dislikes。用户说过「我喜欢这类」，
+   * 这个纠正必须比自动归纳更持久。
+   */
+  it('重新归纳后仍然保留用户的手动纠正', async () => {
+    store['profileOverrides'] = {
+      removedDislikes: ['游戏实况'],
+      addedInterests: ['咖啡手冲'],
+    };
+    // 假 LLM：归纳出来又把「游戏实况」写回 dislikes
+    const c: LlmClient = {
+      complete: vi.fn(async () => JSON.stringify({
+        interests: [{ tag: '技术', weight: 0.8 }],
+        dislikes: ['游戏实况'],
+        stanceHints: {},
+        topics: ['游戏实况'],
+      })),
+    };
+    const s = new ProfileService(c, () => NOW);
+    await s.refresh(c);
+    const p = await s.get();
+    expect(p!.dislikes).toEqual([]);
+    expect(p!.topics).toEqual([]);
+    expect(p!.interests.map((i) => i.tag)).toContain('咖啡手冲');
+  });
+
   it('过期常量为 24 小时', () => {
     expect(PROFILE_MAX_AGE_MS).toBe(24 * 60 * 60 * 1000);
   });

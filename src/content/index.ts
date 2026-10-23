@@ -219,6 +219,8 @@ function startWatchTracking(
     onSecond: (seconds) => record(seconds),
     onHidden: (seconds) => record(seconds),
     onThreshold: (seconds) => {
+      // 「仅关键词」档是零 LLM 调用档，反向推荐要靠 LLM 判立场 → 停用。
+      if (settings.judgeLevel === 'keyword') return;
       console.info(`[anti-bubble] 已观看 ${seconds} 秒，开始找相反观点`);
       void fetchOppositeRecommendations(video, settings).then(({ items, recalled }) => {
         const anchor = resolveRecommendationAnchor(document);
@@ -414,6 +416,13 @@ async function mountCommentPanel(
     onRevoke: (id) => {
       void send({ type: MSG.REVOKE, id: 'revoke', payload: { itemId: id } });
     },
+    onUpdateProfile: (info) => {
+      void send({
+        type: MSG.REVOKE,
+        id: 'revoke',
+        payload: { ...info, updateProfile: true },
+      });
+    },
   });
   panel.mount(anchor);
   return panel;
@@ -443,6 +452,13 @@ async function main(): Promise<void> {
     onRevoke: (id) => {
       void send({ type: MSG.REVOKE, id: 'revoke', payload: { itemId: id } });
     },
+    onUpdateProfile: (info) => {
+      void send({
+        type: MSG.REVOKE,
+        id: 'revoke',
+        payload: { ...info, updateProfile: true },
+      });
+    },
   });
 
   // start() 的同步部分已经把卡片收集好了（items 在发判定请求前就填上了），
@@ -453,7 +469,9 @@ async function main(): Promise<void> {
   // 搜索页的反向推荐（设计 §3.4 的第二个触发点）。
   //
   // 对搜索结果里最靠前的几个视频做立场判定，命中「表达观点」的才给相反观点。
-  if (detectPageType(location.href) === 'search') {
+  //
+  // 「仅关键词」档是零 LLM 调用档，反向推荐要靠 LLM 判立场 → 停用。
+  if (detectPageType(location.href) === 'search' && settings?.judgeLevel !== 'keyword') {
     void fetchSearchOppositeRecommendations(ctrl.items, settings, { bili, send }).then(
       (items) => {
         if (items.length === 0) return;

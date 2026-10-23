@@ -1,4 +1,4 @@
-import type { ContentItem, Verdict, PageType, Mode, UserProfile, Settings, LlmConfig } from './types';
+import type { ContentItem, Verdict, PageType, Mode, UserProfile, Settings, LlmConfig, ItemKind } from './types';
 
 export const MSG = {
   /** content → bg：请求判定一批内容 */
@@ -7,6 +7,8 @@ export const MSG = {
   GET_WORDLIST: 'GET_WORDLIST',
   /** content → bg：请求画像 */
   GET_PROFILE: 'GET_PROFILE',
+  /** popup → bg：取用户手动纠正过的画像项 */
+  GET_PROFILE_OVERRIDES: 'GET_PROFILE_OVERRIDES',
   /** content → bg：重新归纳画像 */
   REFRESH_PROFILE: 'REFRESH_PROFILE',
   /**
@@ -68,6 +70,22 @@ export interface RecordWatchPayload {
 
 export interface RevokePayload {
   itemId: string;
+  /**
+   * 命中的画像「不喜欢」标签。
+   * 只有 reasonCode = `dislike_match` 的判定才有；LLM 判的不填。
+   */
+  matchedTag?: string;
+  /** 这条内容的文本（视频标题 / 评论正文），用来派生兴趣标签 */
+  text?: string;
+  /** 内容类型。评论不参与「加兴趣」，只有视频才算「想看这类」。 */
+  kind?: ItemKind;
+  /**
+   * 是否同时更新画像。
+   *
+   * true = 撤销 + 画像调整（去掉命中的不喜欢标签、把题材加进兴趣）；
+   * false/不传 = 只撤销（老行为）。
+   */
+  updateProfile?: boolean;
 }
 
 export interface SetSettingsPayload {

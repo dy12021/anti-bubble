@@ -29,6 +29,12 @@ export function injectStyles(root: ParentNode): void {
   margin-left: auto; flex: 0 0 auto;
 }
 .${CSS_PREFIX}-revoke:hover { text-decoration: underline; }
+.${CSS_PREFIX}-like {
+  cursor: pointer; border: 0; background: transparent;
+  color: #00a1d6; font-size: 12px; padding: 0 2px;
+  flex: 0 0 auto;
+}
+.${CSS_PREFIX}-like:hover { text-decoration: underline; }
 .${CSS_PREFIX}-mark {
   display: inline-block; margin-left: 6px;
   padding: 0 5px; font-size: 11px; line-height: 1.6;
@@ -154,12 +160,22 @@ export interface FoldHandle {
  * 所以这里改成：卡片留在原来的位置，把它的内容换成「理由 + 仍要显示」。
  *
  * 点「仍要显示」→ 恢复原来的内容 + 调用 onRevoke（上层写白名单）。
+ *
+ * ## 第二个按钮：「我喜欢这类」
+ *
+ * 折叠的来源是**画像里的「不喜欢」**时（verdict.matchedTag 有值），
+ * 再给一个「我喜欢这类」：撤销的同时把画像改了——
+ * 把那个「不喜欢」标签去掉、把这条的题材加进「感兴趣」。
+ *
+ * 为什么单独一个按钮而不是撤销的自动后果：撤销只说明「这一条放过」，
+ * 改画像是「以后这类都放过」，两件事的代价不一样，不该捆在一起。
  */
 export function applyFold(
   root: ParentNode,
   itemId: string,
   verdict: Verdict,
   onRevoke: (id: string) => void,
+  onUpdateProfile?: (id: string) => void,
 ): FoldHandle | null {
   const doc = ownerDoc(root);
   const target = resolveTarget(doc, itemId);
@@ -209,6 +225,24 @@ export function applyFold(
 
   notice.appendChild(reason);
   notice.appendChild(btn);
+
+  // 只有「画像判定」才给「我喜欢这类」：别的折叠（LLM 判的引战）
+  // 撤销就够了，改画像没有依据。
+  if (verdict.matchedTag && onUpdateProfile) {
+    const like = doc.createElement('button');
+    like.className = `${CSS_PREFIX}-like`;
+    like.setAttribute('data-ab-prefix', `${CSS_PREFIX}-like`);
+    like.textContent = '我喜欢这类';
+    like.title = `撤销屏蔽，并把「${verdict.matchedTag}」从画像里去掉`;
+    like.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      restore();
+      onUpdateProfile(itemId);
+    });
+    notice.appendChild(like);
+  }
+
   el.appendChild(notice);
   return { restore };
 }

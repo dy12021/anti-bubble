@@ -25,7 +25,11 @@ interface CachedWordlist extends Wordlist {
  * 缓存键 = 语境 id + 画像版本。画像更新后自动失效（判据可能要变）。
  */
 export class WordlistService {
-  constructor(private readonly client: LlmClient) {}
+  /**
+   * 可以是 null：「仅关键词」档不需要词表，也就没有 LLM。
+   * 这种情况下 get() 直接返回空表（= 粗筛永不命中 = 全部放行），不抛。
+   */
+  constructor(private readonly client: LlmClient | null) {}
 
   async get(
     subject: Subject,
@@ -49,6 +53,12 @@ export class WordlistService {
     }
 
     const fallback = buildFallbackWordlist(subject);
+
+    // 没有 LLM 客户端 → 没有词表。返回空表（= 全部放行），不抛。
+    if (!this.client) {
+      return { ...fallback, cacheKey: key, error: '未配置 LLM，无法生成词表' };
+    }
+
     let wordlist: Wordlist;
     try {
       const { system, user } = buildSubjectPrompt(subject, profile, mode);

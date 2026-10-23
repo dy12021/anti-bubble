@@ -1,10 +1,11 @@
 import type { UserProfile, UserProfileInput, ContentItem } from '../shared/types';
 import type { LlmClient } from './llm/client';
-import { getProfile, saveProfile, clearProfile, getJson, setJson } from './storage';
+import { getProfile, saveProfile, clearProfile, getJson, setJson, getProfileOverrides } from './storage';
 import { STORAGE_KEYS, WATCH_SAMPLE_SECONDS } from '../shared/constants';
 import { induceProfile } from '../profile/induce';
 import { mergeSamples } from '../profile/merge';
 import { buildRuleProfile } from '../profile/rules';
+import { applyProfileOverrides } from '../profile/feedback';
 import { toSample } from '../profile/collect';
 
 /** 画像最长有效期：24 小时后自动重新归纳。 */
@@ -38,8 +39,12 @@ const MAX_WATCH_LOG = 1000;
  * 由拿到 BiliClient 的一侧写进 watchLog，本服务只负责消费。
  */
 export class ProfileService {
+  /**
+   * 可以是 null：「仅关键词」档不归纳画像（归纳要调 LLM）。
+   * 这种情况下 refresh 会报错，getOrRefresh 保留旧画像。
+   */
   constructor(
-    private readonly client: LlmClient,
+    private readonly client: LlmClient | null,
     private readonly now: () => number = () => Date.now(),
   ) {}
 
@@ -53,13 +58,17 @@ export class ProfileService {
     opts: { force?: boolean } = {},
   ): Promise<UserProfile> {
     const llm = client ?? this.client;
+    if (!llm) throw new Error('尚未配置 LLM，无法归纳画像');
     const existing = await getProfile();
     if (existing && !opts.force && this.isFresh(existing)) {
       return existing;
     }
 
     const samples = await this.getSamples();
-    const profile = await induceProfile(llm, samples, this.now());
+    const induced = await induceProfile(llm, samples, this.now());
+    // 归纳完要把用户的手动纠正叠回去——
+    // 用户的显式纠正不能被自动归纳顶掉。
+    const profile = await this.withOverrides(induced);
     await saveProfile(profile);
     return profile;
   }
@@ -96,10 +105,24 @@ export class ProfileService {
 
     await setJson(STORAGE_KEYS.profileRefreshAt, this.now());
     const llm = client ?? this.client;
+    // 没有 LLM 客户端（仅关键词档）：保留旧画像，别动它
+    if (!llm) return existing;
     // 归纳失败时保留旧画像，别用粗粒度的规则画像把它顶掉
-    const profile = await induceProfile(llm, samples, this.now(), existing);
+    const induced = await induceProfile(llm, samples, this.now(), existing);
+    const profile = await this.withOverrides(induced);
     await saveProfile(profile);
     return profile;
+  }
+
+  /**
+   * 叠加用户的手动纠正。
+   *
+   * 画像是自动归纳的产物，会覆盖用户自己改过的地方；
+   * 用户的显式纠正（页面上点「我喜欢这类」）优先级更高。
+   */
+  private async withOverrides(profile: UserProfile): Promise<UserProfile> {
+    const overrides = await getProfileOverrides();
+    return applyProfileOverrides(profile, overrides);
   }
 
   /** 画像是否还在有效期内。 */

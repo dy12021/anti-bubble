@@ -1,4 +1,4 @@
-import type { ContentItem, Verdict, Settings, PageType } from '../shared/types';
+import type { ContentItem, Verdict, Settings, PageType, ItemKind } from '../shared/types';
 import type { Subject, VideoContext } from '../pipeline/types';
 import { buildListSubject, videoSubject } from '../pipeline/subject';
 import { getAdapter } from '../adapters';
@@ -32,6 +32,18 @@ export interface ControllerDeps {
   video?: VideoContext | null;
   root?: ParentNode;
   onRevoke?: (id: string) => void;
+  /**
+   * 「我喜欢这类」：撤销屏蔽的同时更新画像。
+   *
+   * 带上这条内容的文本与类型，后台才能把命中的「不喜欢」标签去掉、
+   * 把这个题材加进「感兴趣」。
+   */
+  onUpdateProfile?: (info: {
+    itemId: string;
+    matchedTag?: string;
+    text?: string;
+    kind?: ItemKind;
+  }) => void;
 }
 
 /**
@@ -258,7 +270,22 @@ export class PageController {
         if (v.action === 'fold' || v.action === 'hide') {
           // hide 与 fold 走同一条路径：都藏起来 + 给理由 + 给撤销。
           // 「可撤销」是铁律，隐藏类动作不能没有出口。
-          const handle = applyFold(root, v.itemId, v, (id) => this.deps.onRevoke?.(id));
+          const handle = applyFold(
+            root,
+            v.itemId,
+            v,
+            (id) => this.deps.onRevoke?.(id),
+            // 「我喜欢这类」：只在「画像判定」时出现（要有 matchedTag）
+            (id) => {
+              const it = this.items.find((i) => i.id === id);
+              this.deps.onUpdateProfile?.({
+                itemId: id,
+                matchedTag: v.matchedTag,
+                text: it?.text,
+                kind: it?.kind,
+              });
+            },
+          );
           // 记下撤销把手：总开关关掉时要把所有折叠过的内容一把恢复
           if (handle) this.folded.push(handle);
         } else if (v.action === 'mark') {

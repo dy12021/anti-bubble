@@ -1,5 +1,6 @@
-import { STORAGE_KEYS, ANTI_TRIGGER_WATCH_SECONDS } from '../shared/constants';
+import { STORAGE_KEYS, ANTI_TRIGGER_WATCH_SECONDS, DEFAULT_JUDGE_LEVEL } from '../shared/constants';
 import type { Settings, SettingsPatch, UserProfile, LlmConfig } from '../shared/types';
+import type { ProfileOverrides } from '../profile/feedback';
 
 /**
  * chrome.storage.local 的 Promise 包装。
@@ -49,6 +50,7 @@ export function defaultSettings(): Settings {
     collectHistory: true,
     confidenceThreshold: 0.7,
     antiTriggerSeconds: ANTI_TRIGGER_WATCH_SECONDS,
+    judgeLevel: DEFAULT_JUDGE_LEVEL,
   };
 }
 
@@ -98,10 +100,35 @@ export async function saveProfile(p: UserProfile): Promise<void> {
 /**
  * 清画像。watchLog 一起清——它是画像的原料，
  * 留着会让「清空画像」后又被旧样本重新归纳出同样的结论。
+ *
+ * 手动纠正也一起清：用户点「清空画像」就是要把这些都抹掉。
  */
 export async function clearProfile(): Promise<void> {
   await removeKey(STORAGE_KEYS.profile);
   await removeKey(STORAGE_KEYS.watchLog);
+  await removeKey(STORAGE_KEYS.profileOverrides);
+}
+
+/**
+ * 读用户手动纠正过的画像项。
+ *
+ * 没有 → 空清单（不是 null）：没纠正过是正常状态。
+ */
+export async function getProfileOverrides(): Promise<ProfileOverrides> {
+  const raw = await getJson<Partial<ProfileOverrides>>(STORAGE_KEYS.profileOverrides, {});
+  return {
+    removedDislikes: Array.isArray(raw.removedDislikes)
+      ? raw.removedDislikes.filter((t): t is string => typeof t === 'string')
+      : [],
+    addedInterests: Array.isArray(raw.addedInterests)
+      ? raw.addedInterests.filter((t): t is string => typeof t === 'string')
+      : [],
+  };
+}
+
+/** 存用户手动纠正过的画像项。 */
+export async function saveProfileOverrides(o: ProfileOverrides): Promise<void> {
+  await setJson(STORAGE_KEYS.profileOverrides, o);
 }
 
 /** 读 LLM 配置（含 API Key）。调用方负责脱敏后再发给 popup。 */

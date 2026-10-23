@@ -10,6 +10,7 @@ const settings: Settings = {
   masterEnabled: true,
   collectHistory: true,
   confidenceThreshold: 0.7,
+  judgeLevel: 'coarse',
 };
 
 function card(id: string, title: string): ContentItem {

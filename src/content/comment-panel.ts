@@ -1,4 +1,4 @@
-import type { ContentItem, Verdict, Settings } from '../shared/types';
+import type { ContentItem, Verdict, Settings, ItemKind } from '../shared/types';
 import type { CommentItem } from '../bili/types';
 import type { VideoContext } from '../pipeline/types';
 import { videoSubject } from '../pipeline/subject';
@@ -38,6 +38,17 @@ export interface CommentPanelOptions {
   settings: Settings;
   /** 撤销回调 */
   onRevoke?: (id: string) => void;
+  /**
+   * 「我喜欢这类」：撤销屏蔽的同时更新画像。
+   *
+   * 带上评论正文与类型，后台才能把命中的「不喜欢」标签去掉。
+   */
+  onUpdateProfile?: (info: {
+    itemId: string;
+    matchedTag?: string;
+    text?: string;
+    kind?: ItemKind;
+  }) => void;
   /** 视频标题，作为判定语境 */
   videoTitle?: string;
   /**
@@ -62,6 +73,8 @@ export class CommentPanel {
   private loading = false;
   /** 已判定过的评论 id，避免重复判定 */
   private judged = new Set<string>();
+  /** 评论 id → 正文。撤销时要把正文带给后台（用来派生兴趣标签）。 */
+  private readonly itemTexts = new Map<string, string>();
   /** 被折叠的评论（总开关关掉时一把恢复） */
   private folded: Array<{ row: HTMLElement; notice: HTMLElement }> = [];
   /** 加了标识标签的评论 */
@@ -267,6 +280,9 @@ export class CommentPanel {
       },
     }));
 
+    // 记下正文：撤销时要把它带给后台（派生兴趣标签用）
+    for (const it of contentItems) this.itemTexts.set(it.id, it.text);
+
     let verdicts: Verdict[] = [];
     try {
       const videoCtx = this.opts.video ?? null;
@@ -352,6 +368,31 @@ export class CommentPanel {
       this.updateCount();
     });
     notice.appendChild(btn);
+
+    // 「我喜欢这类」：只在「画像判定」时出现（要有 matchedTag）
+    if (v.matchedTag && this.opts.onUpdateProfile) {
+      const like = doc.createElement('button');
+      like.type = 'button';
+      like.className = `${CSS_PREFIX}-like`;
+      like.setAttribute('data-ab-prefix', `${CSS_PREFIX}-like`);
+      like.textContent = '我喜欢这类';
+      like.title = `撤销屏蔽，并把「${v.matchedTag}」从画像里去掉`;
+      like.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        row.style.display = '';
+        notice.remove();
+        this.folded = this.folded.filter((f) => f.notice !== notice);
+        this.opts.onUpdateProfile?.({
+          itemId: v.itemId,
+          matchedTag: v.matchedTag,
+          text: this.itemTexts.get(v.itemId),
+          kind: 'comment',
+        });
+        this.updateCount();
+      });
+      notice.appendChild(like);
+    }
 
     row.parentNode?.insertBefore(notice, row);
     // 记下来，总开关关掉时能一把全撤回来

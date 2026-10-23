@@ -1,5 +1,5 @@
 import { MSG } from '../shared/messages';
-import type { Settings, UserProfile, CollectReport } from '../shared/types';
+import type { Settings, UserProfile, CollectReport, JudgeLevel } from '../shared/types';
 
 /* ------------------------------------------------------------------ *
  * 面板逻辑
@@ -55,7 +55,7 @@ function fmtTime(iso: string): string {
 
 function bindMode(): void {
   const btns = Array.from(
-    document.querySelectorAll<HTMLButtonElement>('.seg-btn'),
+    document.querySelectorAll<HTMLButtonElement>('.seg-btn[data-mode]'),
   );
   for (const b of btns) {
     b.addEventListener('click', () => {
@@ -68,11 +68,47 @@ function bindMode(): void {
 }
 
 function paintMode(mode: Settings['mode']): void {
-  for (const b of document.querySelectorAll<HTMLButtonElement>('.seg-btn')) {
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.seg-btn[data-mode]')) {
     const on = b.dataset['mode'] === mode;
     b.classList.toggle('on', on);
     b.setAttribute('aria-checked', String(on));
   }
+}
+
+/* --------------------------- 判定档位 --------------------------- */
+
+/** 每档的说明。写清楚代价，别让用户凭猜选。 */
+const LEVEL_HINT: Record<JudgeLevel, string> = {
+  all:
+    '每条内容都交给 LLM 判，画像里的「不喜欢」也由模型自己权衡。判得最准，但每条都花钱。',
+  coarse:
+    '先用 LLM 按当前语境生成关键词粗筛，命中的才逐条送 LLM 精判。命中缓存时词表 0 次调用。',
+  keyword:
+    '只用内置关键词库（骂人、煽动对立等常见用语），一次 LLM 都不调，也不用配 API Key。' +
+    '判不准属正常，反向推荐会一并停用。',
+};
+
+function bindLevel(): void {
+  const btns = Array.from(
+    document.querySelectorAll<HTMLButtonElement>('.seg-btn[data-level]'),
+  );
+  for (const b of btns) {
+    b.addEventListener('click', () => {
+      const level = b.dataset['level'] as JudgeLevel;
+      void call(MSG.SET_SETTINGS, { settings: { judgeLevel: level } }).then((r) => {
+        if (r.ok) paintLevel(level);
+      });
+    });
+  }
+}
+
+function paintLevel(level: JudgeLevel): void {
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.seg-btn[data-level]')) {
+    const on = b.dataset['level'] === level;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+  }
+  el('levelHint').textContent = LEVEL_HINT[level] ?? '';
 }
 
 /* --------------------------- 设置读写 --------------------------- */
@@ -83,6 +119,7 @@ async function loadSettings(): Promise<void> {
   const s = r.data;
 
   paintMode(s.mode);
+  paintLevel(s.judgeLevel ?? 'coarse');
   el<HTMLInputElement>('masterEnabled').checked = s.masterEnabled;
   el<HTMLInputElement>('collectHistory').checked = s.collectHistory;
   for (const input of Array.from(
@@ -265,7 +302,44 @@ function escapeHtml(s: string): string {
 async function loadProfile(): Promise<void> {
   const r = await call<UserProfile | null>(MSG.GET_PROFILE);
   renderProfile(r.ok ? (r.data ?? null) : null);
+  await renderOverrides();
   await renderCollectReport();
+}
+
+/**
+ * 用户手动纠正过的画像项。
+ *
+ * 这些是**用户自己纠正过**的（页面上点「我喜欢这类」），
+ * 优先级高于自动归纳——所以要让用户看得见。
+ */
+async function renderOverrides(): Promise<void> {
+  const r = await call<{ removedDislikes?: string[]; addedInterests?: string[] }>(
+    MSG.GET_PROFILE_OVERRIDES,
+  );
+  const box = el('profileOverrides');
+  const removed = r.data?.removedDislikes ?? [];
+  const added = r.data?.addedInterests ?? [];
+  if (!removed.length && !added.length) {
+    box.innerHTML = '';
+    return;
+  }
+  const parts: string[] = [];
+  if (removed.length) {
+    parts.push(
+      `<div class="tags-label">你手动取消的「不喜欢」</div><div class="tags">${removed
+        .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
+        .join('')}</div>`,
+    );
+  }
+  if (added.length) {
+    parts.push(
+      `<div class="tags-label">你手动加的「感兴趣」</div><div class="tags">${added
+        .map((t) => `<span class="tag">${escapeHtml(t)}</span>`)
+        .join('')}</div>`,
+    );
+  }
+  box.innerHTML =
+    `<div class="collect-label">你的手动纠正（自动归纳不会覆盖它们）</div>` + parts.join('');
 }
 
 /**
@@ -388,6 +462,7 @@ function bindClearAll(): void {
 
 async function main(): Promise<void> {
   bindMode();
+  bindLevel();
   bindSettings();
   bindLlmConfig();
   bindProfile();

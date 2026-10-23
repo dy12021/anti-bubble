@@ -146,3 +146,56 @@ describe('折叠动作', () => {
     expect((d.querySelector('.reply-content') as HTMLElement).style.display).toBe('none');
   });
 });
+
+/**
+ * 「我喜欢这类」：撤销屏蔽时顺手把画像改了。
+ *
+ * 画像里的「不喜欢」是归纳出来的，**会错**——
+ * 用户点「仍要显示」就是在说「这条其实我想看」，
+ * 不修正画像的话，同题材的内容下次还会被折叠。
+ */
+describe('折叠说明条上的「我喜欢这类」', () => {
+  const profileVerdict: Verdict = {
+    itemId: '111', action: 'fold', reason: '命中你不喜欢的「游戏实况」',
+    reasonCode: 'dislike_match', confidence: 0.9, revocable: true,
+    matchedTag: '游戏实况',
+  };
+
+  it('命中画像的折叠才出现这个按钮', () => {
+    const d = fixture();
+    applyFold(d, '111', profileVerdict, () => {}, () => {});
+    expect(d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-like"]`)).not.toBeNull();
+  });
+
+  it('LLM 判的折叠不出现这个按钮（没有标签可改）', () => {
+    const d = fixture();
+    applyFold(d, '111', verdict, () => {}, () => {});
+    expect(d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-like"]`)).toBeNull();
+  });
+
+  it('没给回调时不出现这个按钮', () => {
+    const d = fixture();
+    applyFold(d, '111', profileVerdict, () => {});
+    expect(d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-like"]`)).toBeNull();
+  });
+
+  it('点了会调用更新画像的回调，并恢复内容', () => {
+    const d = fixture();
+    const onUpdateProfile = vi.fn();
+    applyFold(d, '111', profileVerdict, () => {}, onUpdateProfile);
+    const btn = d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-like"]`) as HTMLElement;
+    btn.click();
+    expect(onUpdateProfile).toHaveBeenCalledWith('111');
+    const content = d.querySelector('.reply-content') as HTMLElement;
+    expect(content.style.display).not.toBe('none');
+  });
+
+  it('点「仍要显示」不会顺带更新画像', () => {
+    const d = fixture();
+    const onUpdateProfile = vi.fn();
+    applyFold(d, '111', profileVerdict, () => {}, onUpdateProfile);
+    const btn = d.querySelector(`[data-ab-prefix="${CSS_PREFIX}-revoke"]`) as HTMLElement;
+    btn.click();
+    expect(onUpdateProfile).not.toHaveBeenCalled();
+  });
+});

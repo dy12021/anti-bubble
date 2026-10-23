@@ -1,4 +1,4 @@
-import type { Mode, UserProfile } from '../shared/types';
+import type { Mode, UserProfile, JudgeLevel } from '../shared/types';
 
 /**
  * 视频元信息。
@@ -139,6 +139,12 @@ export interface PipelineContext {
   subject: Subject | null;
   /** 置信度阈值 */
   threshold: number;
+  /**
+   * 判定档位。
+   *
+   * 缺省是 `coarse`（词表粗筛 + 精判），也就是插件一直以来的行为。
+   */
+  judgeLevel?: JudgeLevel;
   /**
    * 已经解析好的词表。
    *

@@ -23,6 +23,7 @@ function settings(patch?: Partial<Settings>): Settings {
     masterEnabled: true,
     collectHistory: true,
     confidenceThreshold: 0.7,
+    judgeLevel: 'coarse',
     ...(patch ?? {}),
   };
 }
@@ -82,7 +83,7 @@ describe('页面控制器', () => {
     const c = new PageController({
       url: 'https://search.bilibili.com/all?keyword=x',
       send,
-      settings: { mode: 'cocoon', enabledPages: { search: false, video: true, feed: true, unknown: false }, masterEnabled: true, collectHistory: true, confidenceThreshold: 0.7 },
+      settings: { mode: 'cocoon', enabledPages: { search: false, video: true, feed: true, unknown: false }, masterEnabled: true, collectHistory: true, confidenceThreshold: 0.7, judgeLevel: 'coarse' },
     });
     await c.start();
     expect(send).not.toHaveBeenCalled();
